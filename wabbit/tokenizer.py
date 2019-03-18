@@ -134,12 +134,12 @@ class WabbitLexer(Lexer):
     # they're being ignored.
 
     # Block-style comment (/* ... */)
-    @_(r'you write')
+    @_(r'/\*(.|\n)*?\*/')
     def COMMENT(self, t):
         self.lineno += t.value.count('\n')
 
     # Line-style comment (//...)
-    @_(r'you write')
+    @_(r'//.*\n')
     def CPPCOMMENT(self, t):
         self.lineno += 1
 
@@ -152,16 +152,16 @@ class WabbitLexer(Lexer):
     # before shorter symbols that are a substring (for example, the
     # pattern for '==' should go before '=').
 
-    PLUS      = r'+'
+    PLUS      = r'\+'
     MINUS     = r'-'
-    TIMES     = r'*'
+    TIMES     = r'\*'
     DIVIDE    = r'/'
     SEMI      = r';'
-    LPAREN    = r'('
-    RPAREN    = r')'
+    LPAREN    = r'\('
+    RPAREN    = r'\)'
     ASSIGN    = r'='
-    GROW      = r'^'
-    DEREF     = r'^'
+    GROW      = r'\^'
+    DEREF     = r'`'
 
     # ----------------------------------------------------------------------
     # *** YOU MUST COMPLETE : write the regexs and additional code below ***
@@ -182,7 +182,18 @@ class WabbitLexer(Lexer):
     #   1.23e-1
     #   1e1
 
-    FLOAT = r'you write'
+    # FLOAT = r""" # taken from https://stackoverflow.com/a/4703508/2069572
+    #     [-+]? # optional sign
+    #     (?:
+    #         (?: \d* \. \d+ ) # .1 .12 .123 etc 9.1 etc 98.1 etc
+    #         |
+    #         (?: \d+ \.? ) # 1. 12. 123. etc 1 12 123 etc
+    #     )
+    #     # followed by optional exponent part if desired
+    #     (?: [Ee] [+-]? \d+ ) ?
+    # """
+
+    FLOAT = r"[-+]?(\d*\.\d+)|(\d+\.\d*)"
 
     # Integer literal
     #
@@ -190,7 +201,7 @@ class WabbitLexer(Lexer):
     #
     # Bonus: Recognize integers in different bases such as 0x1a, 0o13 or 0b111011.
 
-    INTEGER = r'you write'
+    INTEGER = r'\d+'
 
     # Character constant. You must recognize a single letter enclosed in single quotes
     # For example:
@@ -204,7 +215,7 @@ class WabbitLexer(Lexer):
     #     '\''    - Quote
     #     '\xhh'  - Generic byte
 
-    CHAR = r"you write"
+    CHAR = r"'[a-zA-Z0-9]'|'\\\''|'[a-zA-Z0-9]'|'\\n'|'\\\\'|'\\x[0-9a-fA-F]{2}'"
 
     # ----------------------------------------------------------------------
     # *** YOU MUST COMPLETE : Write the regex and add keywords ***
@@ -218,13 +229,15 @@ class WabbitLexer(Lexer):
     # identifiers. You need to catch these and change their token type
     # to match the appropriate keyword.
 
-    ID = 'you write'
+    ID = r'[a-zA-Z_][a-zA-Z0-9_]*'
 
     # The following assignments are declaring special cases. If the
     # matched text of ID exactly matches the text in [...], the
     # token type is changed to the value on the right.
 
     ID['print'] = PRINT
+    ID['var'] = VAR
+    ID['const'] = CONST
 
     # ----------------------------------------------------------------------
     # Method that ignores one or more newlines and increments the line number
