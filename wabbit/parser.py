@@ -18,7 +18,7 @@ statement :  const_declaration
           |  var_declaration
           |  assign_statement
           |  print_statement
-    
+
 const_declaration : CONST ID = expression ;
 
 var_declaration : VAR ID datatype ;
@@ -43,11 +43,11 @@ expression : + expression
 typecast  : datatype ( expression )
           ;
 
-literal : INTEGER     
-        | FLOAT       
+literal : INTEGER
+        | FLOAT
         | CHAR
 
-location : simplelocation 
+location : simplelocation
          | memorylocation
          ;
 
@@ -86,7 +86,7 @@ from .tokenizer import WabbitLexer
 from . import typesys
 
 # ----------------------------------------------------------------------
-# Get the AST nodes.  
+# Get the AST nodes.
 # Read further instructions in ast.py
 from .ast import *
 
@@ -96,7 +96,7 @@ class WabbitParser(Parser):
     tokens = WabbitLexer.tokens
 
     # ----------------------------------------------------------------------
-    # Operator precedence table.   Operators must follow the same 
+    # Operator precedence table.   Operators must follow the same
     # precedence rules as in Python.  Instructions to be given in the project.
 
     precedence = (
@@ -127,9 +127,80 @@ class WabbitParser(Parser):
     #
     # Afterwards, add features by looking at the code in Tests/parsetest0-7.wb
 
+    @_('statements')
+    def program(self, p):
+         return Program(p.statements)
+
+    @_('statement')
+    def statements(self, p):               # A single statement
+        return [p.statement]               # The initial list
+
+    @_('statements statement')
+    def statements(self, p):               # Multiple statements
+        p.statements.append(p.statement)   # Add a statement to previous statements
+        return p.statements
+
+    @_('print_statement',
+       'const_declaration',
+       'var_declaration',
+        # add more statements later
+    )
+    def statement(self, p):
+        return p[0]
+
+    @_('CONST ID ASSIGN expression SEMI')
+    def const_declaration(self, p):
+        return ConstDeclaration(p.ID, p.expression, lineno=p.lineno)
+
+    @_('VAR ID datatype ASSIGN expression SEMI')
+    def var_declaration(self, p):
+        return VarDeclaration(p.ID, p.datatype, p.expression, lineno=p.lineno)
+
+    @_('VAR ID datatype SEMI')
+    def var_declaration(self, p):
+        return VarDeclaration(p.ID, SimpleType(p.datatype, lineno=p.lineno), None, lineno=p.lineno)
+
+    @_('ID')
+    def datatype(self, p):
+        return SimpleType(p.ID, lineno=p.lineno)
+
     @_('PRINT expression SEMI')
     def print_statement(self, p):
+        print(t for t in p)
         return PrintStatement(p.expression, lineno=p.lineno)
+
+    @_('datatype LPAREN expression RPAREN')
+    def expression(self, p):
+        return TypeCast(p.datatype, p.expression, lineno=p.lineno)
+
+    @_('PLUS expression')
+    def expression(self, p):
+        return UnaryOp(p[0], p.expression, lineno=p.lineno)
+
+    @_('expression PLUS expression')
+    def expression(self, p):
+        print(t for t in p)
+        return BinOp(p[1], p.expression0, p.expression1, lineno=p.lineno)
+
+    @_('MINUS expression')
+    def expression(self, p):
+        return UnaryOp(p[0], p.expression, lineno=p.lineno)
+
+    @_('expression MINUS expression')
+    def expression(self, p):
+        return BinOp(p[1], p.expression0, p.expression1, lineno=p.lineno)
+
+    @_('expression TIMES expression')
+    def expression(self, p):
+        return BinOp(p[1], p.expression0, p.expression1, lineno=p.lineno)
+
+    @_('expression DIVIDE expression')
+    def expression(self, p):
+        return BinOp(p[1], p.expression0, p.expression1, lineno=p.lineno)
+
+    @_('LPAREN expression RPAREN')
+    def expression(self, p):
+        return p
 
     @_('literal')
     def expression(self, p):
@@ -138,7 +209,15 @@ class WabbitParser(Parser):
     @_('INTEGER')
     def literal(self, p):
         return IntegerLiteral(int(p.INTEGER), lineno=p.lineno)
-        
+
+    @_('FLOAT')
+    def literal(self, p):
+        return FloatLiteral(float(p.FLOAT), lineno=p.lineno)
+
+    @_('CHAR')
+    def literal(self, p):
+        return CharLiteral(p.CHAR, lineno=p.lineno)
+
     # ----------------------------------------------------------------------
     # DO NOT MODIFY
     #
@@ -160,6 +239,7 @@ def parse(source):
     '''
     lexer = WabbitLexer()
     parser = WabbitParser()
+    # print(list(lexer.tokenize(source)))
     ast = parser.parse(lexer.tokenize(source))
     return ast
 

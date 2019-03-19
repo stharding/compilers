@@ -10,13 +10,13 @@ each kind of grammar rule.  A few sample AST nodes can be found at the
 top of this file.  You will need to add more on your own.
 
 This file has a small bit of metaprogramming to simplify specification
-and to perform some validation steps.  Do not modify the first part. 
+and to perform some validation steps.  Do not modify the first part.
 '''
 
 # DO NOT MODIFY
 # -------------
 class AST(object):
-    _nodes = { } 
+    _nodes = { }
 
     @classmethod
     def __init_subclass__(cls):
@@ -29,10 +29,10 @@ class AST(object):
 
     def __init__(self, *args, **kwargs):
         if len(args) != len(self._fields):
-            raise TypeError(f'Expected {len(fields)} arguments')
+            raise TypeError(f'Expected {len(self._fields)} arguments')
         for name, val in zip(self._fields, args):
             setattr(self, name, val)
-            
+
         for name, val in kwargs.items():
             setattr(self, name, val)
 
@@ -65,7 +65,7 @@ class AST(object):
 #          left : Expression
 #          right : Expression
 #
-# The "types" on the right are merely suggestions and don't have 
+# The "types" on the right are merely suggestions and don't have
 # any effect on the underlying operation.
 #
 # In the parser.py file, you're going to create nodes using code
@@ -82,6 +82,7 @@ class AST(object):
 # Abstract AST nodes.  These are not instantiated directly, but other
 # classes inherit from them.
 
+
 class Statement(AST):
     '''
     Base class for all statements
@@ -92,13 +93,58 @@ class Expression(AST):
     Base class for all expressions
     '''
 
+class Program(AST):
+    value: [Statement]
+
+class DataType(AST):
+    pass
+
+class ConstDeclaration(Statement):
+    '''
+    const name = value ;
+    '''
+    name  : str
+    value : Expression
+
+class VarDeclaration(Statement):
+    '''
+    var name datatype [ = value ];
+    '''
+    name     : str
+    datatype : DataType
+    value    : (Expression, type(None))    # Optional
+
+
 # Concrete AST nodes.  These are instantiated in the parser
+
+class SimpleType(DataType):
+    name : str
+
+class TypeCast(DataType):
+    name: str
+    value: Expression
+
+
+class UnaryOp(Expression):
+    op: str
+    operand: Expression
+
+class BinOp(Expression):
+    op: str
+    left: Expression
+    right: Expression
 
 class PrintStatement(Statement):
     value : Expression
 
 class IntegerLiteral(Expression):
     value : int
+
+class FloatLiteral(Expression):
+    value : float
+
+class CharLiteral(Expression):
+    value : chr
 
 # ----------------------------------------------------------------------
 #                  DO NOT MODIFY ANYTHING BELOW HERE
@@ -116,7 +162,7 @@ class VisitDict(dict):
         if key in self:
             raise AttributeError(f'Duplicate definition for {key}')
         super().__setitem__(key, value)
-        
+
 
 class NodeVisitMeta(type):
     @classmethod
@@ -158,7 +204,7 @@ class NodeVisitor(metaclass=NodeVisitMeta):
             method = 'visit_' + node.__class__.__name__
             visitor = getattr(self, method, self.generic_visit)
             visitor(node)
-    
+
     def generic_visit(self,node):
         '''
         Method executed if no applicable visit_ method can be found.
