@@ -1,0 +1,35 @@
+/* irtest3.wb - Constant declarations */
+
+const x = 2;
+const pi = 3.14159;
+const a = 'a';
+
+print x;
+print pi;
+print a;
+
+/* This should produce the following:
+
+('VARI', 'x')
+('CONSTI', 2)
+('STORE', 'x')
+('VARF', 'pi')
+('CONSTF', 3.14159)
+('STORE', 'pi')
+('VARI', 'a')
+('CONSTI', 97)
+('STORE', 'a')
+('LOAD', 'x')
+('PRINTI',)
+('LOAD', 'pi')
+('PRINTF',)
+('LOAD', 'a')
+('PRINTB',)
+
+Note: Constants are declared as ordinary variables.  You don't worry
+about immutability at this stage because that was already validated in
+the type checker.
+
+To make this part of the project work, you'll need to pay careful 
+attention to location nodes and reading of locations in expressions.
+*/

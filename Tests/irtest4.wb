@@ -1,0 +1,50 @@
+/* irtest4.wb - Variable declarations and assignment */
+
+var x int = 42;
+var y int;
+y = x + 10;
+print(y);
+
+var pi float = 3.14159;
+var z float;
+z = 2.0 * pi;
+print(z);
+
+var a char = 'a';
+var b char;
+b = a;
+print(b);
+
+/* The expected output is
+
+('VARI', 'x')
+('CONSTI', 42)
+('STORE', 'x')
+('VARI', 'y')
+('LOAD', 'x')
+('CONSTI', 10)
+('ADDI',)
+('STORE', 'y')
+('LOAD', 'y')
+('PRINTI',)
+('VARF', 'pi')
+('CONSTF', 3.14159)
+('STORE', 'pi')
+('VARF', 'z')
+('CONSTF', 2.0)
+('LOAD', 'pi')
+('MULF',)
+('STORE', 'z')
+('LOAD', 'z')
+('PRINTF',)
+('VARI', 'a')
+('CONSTI', 97)
+('STORE', 'a')
+('VARI', 'b')
+('LOAD', 'a')
+('STORE', 'b')
+('LOAD', 'b')
+('PRINTB',)
+
+*/
+

@@ -1,0 +1,71 @@
+/* irtest5.wb */
+
+/* Test basic memory operations */
+
+var memsize int = ^1024;        /* Grow memory by at least 1024 bytes */
+print memsize;
+
+`(memsize-8) = 42;
+var a int = `(memsize-8);
+print a;                       // Should produce 42 
+
+`(memsize-16) = 4.2;
+var b float = `(memsize-16);
+print b;                       // Should print 4.2
+
+`(memsize-24) = 'x';
+var c char = `(memsize-24);
+print c;                       // Should print 'x'
+print '\n';
+
+/* Expected output
+
+('VARI', 'memsize')
+('CONSTI', 1024)
+('GROW',)
+('STORE', 'memsize')
+('LOAD', 'memsize')
+('PRINTI',)
+('LOAD', 'memsize')
+('CONSTI', 8)
+('SUBI',)
+('CONSTI', 42)
+('POKEI',)
+('VARI', 'a')
+('LOAD', 'memsize')
+('CONSTI', 8)
+('SUBI',)
+('PEEKI',)
+('STORE', 'a')
+('LOAD', 'a')
+('PRINTI',)
+('LOAD', 'memsize')
+('CONSTI', 16)
+('SUBI',)
+('CONSTF', 4.2)
+('POKEF',)
+('VARF', 'b')
+('LOAD', 'memsize')
+('CONSTI', 16)
+('SUBI',)
+('PEEKF',)
+('STORE', 'b')
+('LOAD', 'b')
+('PRINTF',)
+('LOAD', 'memsize')
+('CONSTI', 24)
+('SUBI',)
+('CONSTI', 120)
+('POKEB',)
+('VARI', 'c')
+('LOAD', 'memsize')
+('CONSTI', 24)
+('SUBI',)
+('PEEKB',)
+('STORE', 'c')
+('LOAD', 'c')
+('PRINTB',)
+('CONSTI', 10)
+('PRINTB',)
+
+*/

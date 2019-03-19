@@ -1,0 +1,16 @@
+/* lextest5.wb
+   This file tests some errors that your lexer might report.
+   See if you can catch these, but don't spend too much time on it.
+   
+*/
+
+/* Illegal characters */
+a$
+123@
+b
+
+/* Unterminated character */
+'H
+
+/* Unterminated C-style comment
+

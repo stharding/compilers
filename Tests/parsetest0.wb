@@ -1,0 +1,5 @@
+/* parsetest0.wb
+
+A single simple Statement */
+
+print 42;

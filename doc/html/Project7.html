@@ -1,0 +1,353 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Project 7 - Control Flow &#8212; Write a Compiler 0.0 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Project 8 - Functions" href="Project8.html" />
+    <link rel="prev" title="Project 6 - Booleans and Relations" href="Project6.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="project-7-control-flow">
+<h1>Project 7 - Control Flow<a class="headerlink" href="#project-7-control-flow" title="Permalink to this headline">¶</a></h1>
+<p>Files Modified:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Everything</span>
+</pre></div>
+</div>
+<div class="section" id="caution">
+<h2>Caution<a class="headerlink" href="#caution" title="Permalink to this headline">¶</a></h2>
+<p>Make sure you fully work through Exericse 7 before starting this
+project.</p>
+</div>
+<div class="section" id="preliminaries">
+<h2>Preliminaries<a class="headerlink" href="#preliminaries" title="Permalink to this headline">¶</a></h2>
+<p>Don’t forget to commit and tag your Project 6 code:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">git</span> <span class="n">commit</span> <span class="o">-</span><span class="n">m</span> <span class="s2">&quot;Project 6 complete&quot;</span>
+<span class="n">bash</span> <span class="o">%</span> <span class="n">git</span> <span class="n">tag</span> <span class="n">project6</span>
+</pre></div>
+</div>
+<p>Once again, this project involves changes to almost every part of the
+compiler.   Failure to commit your previous code is not advised.</p>
+</div>
+<div class="section" id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Permalink to this headline">¶</a></h2>
+<p>In this project, you’re going to add basic control-flow constructs to
+your compiler.  Specifically, an <code class="docutils literal notranslate"><span class="pre">if-else</span></code> statement:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">relation</span> <span class="p">{</span>
+     <span class="n">statements</span>
+<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+     <span class="n">statements</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>and a <code class="docutils literal notranslate"><span class="pre">while</span></code>-loop:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">while</span> <span class="n">relation</span> <span class="p">{</span>
+    <span class="n">statements</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>These statements are to have the familiar semantics you are used to
+from other programming languages.</p>
+<p>Suggested sequence of work:</p>
+<ol class="arabic simple">
+<li>Add tokens for <code class="docutils literal notranslate"><span class="pre">if</span></code>, <code class="docutils literal notranslate"><span class="pre">else</span></code>, and <code class="docutils literal notranslate"><span class="pre">while</span></code> to <code class="docutils literal notranslate"><span class="pre">wabbit/tokenizer.py</span></code>.</li>
+<li>Add new AST nodes for a conditional and while-loop to <code class="docutils literal notranslate"><span class="pre">wabbit/ast.py</span></code>.</li>
+<li>Add new parsing rules to <code class="docutils literal notranslate"><span class="pre">wabbit/parser.py</span></code>.</li>
+<li>Add new type-checking code to <code class="docutils literal notranslate"><span class="pre">wabbit/checker.py</span></code>.  Your checking code
+should enforce the requirement that the expression given to <code class="docutils literal notranslate"><span class="pre">if</span></code> or <code class="docutils literal notranslate"><span class="pre">while</span></code>
+evaluates to a boolean value.</li>
+<li>Modify the file <code class="docutils literal notranslate"><span class="pre">wabbit/ircode.py</span></code> to generate code using structured
+control flow.  See the details below about this:</li>
+<li>Modify the files <code class="docutils literal notranslate"><span class="pre">wabbit/llvmgen.py</span></code>, <code class="docutils literal notranslate"><span class="pre">wabbit/wasm.py</span></code>, and <code class="docutils literal notranslate"><span class="pre">wabbit/python.py</span></code>
+So that they emit code with control flow.</li>
+</ol>
+<p>Making all of these changes will take some time, but may not involve
+as many changes to compiler as you think.  The most tricky parts will
+involve changes to mapping structure assembly to LLVM.  Again, keep reading
+for more information.</p>
+</div>
+<div class="section" id="structured-control-flow">
+<h2>Structured Control Flow<a class="headerlink" href="#structured-control-flow" title="Permalink to this headline">¶</a></h2>
+<p>In generating intermediate code, we’re going to rely on “structured
+control flow.”  What is structured control flow you ask?  It’s basically
+the same programming technique you use now!  For example, an if-statement
+in Python:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">a</span> <span class="o">&lt;</span> <span class="n">b</span><span class="p">:</span>
+    <span class="n">minval</span> <span class="o">=</span> <span class="n">a</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">maxval</span> <span class="o">=</span> <span class="n">b</span>
+</pre></div>
+</div>
+<p>Or a while-loop:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">while</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>Notice the lack of “goto” statements.  At the assembly level, we’re going
+to introduce a few new instructions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">(</span><span class="s1">&#39;IF&#39;</span><span class="p">,)</span>
+<span class="o">...</span> <span class="n">consequent</span> <span class="o">...</span>
+<span class="p">(</span><span class="s1">&#39;ELSE&#39;</span><span class="p">,)</span>
+<span class="o">...</span> <span class="n">alternative</span> <span class="o">...</span>
+<span class="p">(</span><span class="s1">&#39;ENDIF&#39;</span><span class="p">,)</span>
+</pre></div>
+</div>
+<p>The ‘IF’ instruction takes the top element of the stack and uses it
+to take one of two code branches.</p>
+<p>For loops, you’re going to use <cite>LOOP</cite>, <cite>CBREAK</cite>, and <cite>ENDLOOP</cite> like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">(</span><span class="s1">&#39;LOOP&#39;</span><span class="p">,)</span>
+<span class="o">...</span> <span class="n">evaluate</span> <span class="n">loop</span> <span class="n">test</span> <span class="o">...</span>
+<span class="p">(</span><span class="s1">&#39;CBREAK&#39;</span><span class="p">,)</span>            <span class="c1"># Go to instruction after ENDLOOP</span>
+<span class="o">...</span> <span class="n">loop</span> <span class="n">body</span> <span class="o">...</span>
+<span class="p">(</span><span class="s1">&#39;ENDLOOP,)            # Jump back to top of loop</span>
+</pre></div>
+</div>
+<p>For the above Python examples, here’s what the low-level IR code might
+look like:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example of if-statement</span>
+<span class="p">(</span><span class="s1">&#39;LOADI&#39;</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;LOADI&#39;</span><span class="p">,</span> <span class="s1">&#39;b&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;LTI&#39;</span><span class="p">,)</span>
+<span class="p">(</span><span class="s1">&#39;IF&#39;</span><span class="p">,)</span>
+<span class="p">(</span><span class="s1">&#39;LOADI&#39;</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;STOREI&#39;</span><span class="p">,</span> <span class="s1">&#39;minval&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;ELSE&#39;</span><span class="p">,)</span>
+<span class="p">(</span><span class="s1">&#39;LOADI&#39;</span><span class="p">,</span> <span class="s1">&#39;b&#39;</span><span class="p">))</span>
+<span class="p">(</span><span class="s1">&#39;STOREI&#39;</span><span class="p">,</span> <span class="s1">&#39;minval&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;ENDIF&#39;</span><span class="p">,)</span>
+
+<span class="c1"># Example of while-loop</span>
+<span class="p">(</span><span class="s1">&#39;LOOP&#39;</span><span class="p">,)</span>
+<span class="p">(</span><span class="s1">&#39;LOADI&#39;</span><span class="p">,</span> <span class="s1">&#39;n&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;CONSTI&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;LEI&#39;</span><span class="p">,)</span>          <span class="c1"># Note: Test is inverted (true breaks out)</span>
+<span class="p">(</span><span class="s1">&#39;CBREAK&#39;</span><span class="p">,)</span>
+<span class="p">(</span><span class="s1">&#39;LOADI&#39;</span><span class="p">,</span> <span class="s1">&#39;n&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;PRINTI&#39;</span><span class="p">,)</span>
+<span class="p">(</span><span class="s1">&#39;LOADI&#39;</span><span class="p">,</span> <span class="s1">&#39;n&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;CONSTI&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;SUBI&#39;</span><span class="p">,)</span>
+<span class="p">(</span><span class="s1">&#39;STOREI&#39;</span><span class="p">,</span> <span class="s1">&#39;n&#39;</span><span class="p">)</span>
+<span class="p">(</span><span class="s1">&#39;ENDLOOP&#39;</span><span class="p">,)</span>
+</pre></div>
+</div>
+<p>Structured control-flow very closely follows the control flow model
+of the original Wabbit source code.  Generating the above code
+should be fairly straightforward–mainly you need to place the various
+IF, ELSE, ENDIF, LOOP, and ENDLOOP instructions in the right place
+when emitting instructions.</p>
+<p>Structured control-flow does not rely on goto statements or labels.
+Thus, if you’ve written low-level machine language before, it’s going
+to look a little weird.</p>
+</div>
+<div class="section" id="wasm-code-generation">
+<h2>Wasm Code Generation<a class="headerlink" href="#wasm-code-generation" title="Permalink to this headline">¶</a></h2>
+<p>Generating Wasm code for structured control flow is
+straightforward because Wasm itself uses structured control flow.  The
+<code class="docutils literal notranslate"><span class="pre">IF</span></code>, <code class="docutils literal notranslate"><span class="pre">ELSE</span></code>, and <code class="docutils literal notranslate"><span class="pre">ENDIF</span></code> instructions should translate almost
+directly to the Wasm <cite>if</cite> instruction.</p>
+<p>Loops in Wasm are going to be slightly more tricky.  For this, you
+need to enclose the loop both in an outer block and by an inner loop
+instruction.  In pseudocode, it looks like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">block</span> <span class="p">{</span>
+  <span class="n">loop</span> <span class="p">{</span>
+      <span class="c1"># Evaluate the loop test</span>
+      <span class="o">...</span>
+      <span class="n">br_if</span> <span class="mi">1</span>     <span class="c1"># Break to enclosing block if eval stack is true</span>
+      <span class="c1"># Evaluate the loop body</span>
+      <span class="o">...</span>
+      <span class="n">br</span> <span class="mi">0</span>        <span class="c1"># Go back to top of loop</span>
+  <span class="p">}</span>
+  <span class="c1"># The br_if 1 targets this position</span>
+  <span class="o">...</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>All of these elements (<code class="docutils literal notranslate"><span class="pre">block</span></code>, <code class="docutils literal notranslate"><span class="pre">loop</span></code>, <code class="docutils literal notranslate"><span class="pre">br_if</span></code>, and <code class="docutils literal notranslate"><span class="pre">br</span></code>) are
+Wasm instructions.  See pg. 90 of the WebAssembly Specification, v1.0
+for the precise encoding.</p>
+</div>
+<div class="section" id="generating-llvm">
+<h2>Generating LLVM<a class="headerlink" href="#generating-llvm" title="Permalink to this headline">¶</a></h2>
+<p>One challenge will involve translating structured control to LLVM’s
+block structure.  To do this, you should create a series of
+basic blocks immediately upon encountering the <code class="docutils literal notranslate"><span class="pre">IF</span></code> instruction.
+For example, something like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">emit_IF</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="n">then_block</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">function</span><span class="o">.</span><span class="n">append_basic_block</span><span class="p">()</span>
+    <span class="n">else_block</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">function</span><span class="o">.</span><span class="n">append_basic_block</span><span class="p">()</span>
+    <span class="n">cont_block</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">function</span><span class="o">.</span><span class="n">append_basic_block</span><span class="p">()</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">cbranch</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pop</span><span class="p">(),</span> <span class="n">then_block</span><span class="p">,</span> <span class="n">else_block</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">position_at_end</span><span class="p">(</span><span class="n">then_block</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">block_stack</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">then_block</span><span class="p">,</span> <span class="n">else_block</span><span class="p">,</span> <span class="n">cont_block</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>You’ll need to save these blocks on some kind of stack for later.
+In the <code class="docutils literal notranslate"><span class="pre">ELSE</span></code> instruction, you’ll refer back to the block stack like
+this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">emit_ELSE</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">branch</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">block_stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">2</span><span class="p">])</span>           <span class="c1"># cont_block</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">position_at_end</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">block_stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>  <span class="c1"># else_block</span>
+</pre></div>
+</div>
+<p>Finally, in the <code class="docutils literal notranslate"><span class="pre">ENDIF</span></code> instruction, you’ll pop the stack:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">emit_ENDIF</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">branch</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">block_stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">2</span><span class="p">])</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">builder</span><span class="o">.</span><span class="n">position_at_end</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">block_stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">2</span><span class="p">])</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">block_stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>It is critical that every LLVM block be terminated by a branch. So,
+when generating code, you need to make sure approach branch
+instructions are generated to get control flow to jump.  If you forget
+this, you’ll get crazy error messages. You’ll also get an error if you
+attempt to put more than one branch in the same block or if you put
+instructions after a branch.</p>
+<p>Generating the <code class="docutils literal notranslate"><span class="pre">LOOP</span></code> code is similar to <code class="docutils literal notranslate"><span class="pre">IF</span></code>. Create the basic
+blocks when you see the <code class="docutils literal notranslate"><span class="pre">LOOP</span></code> instruction and save them on a stack
+for later use in <code class="docutils literal notranslate"><span class="pre">CBREAK</span></code> and <code class="docutils literal notranslate"><span class="pre">ENDLOOP</span></code> instructions.</p>
+</div>
+<div class="section" id="testing">
+<h2>Testing<a class="headerlink" href="#testing" title="Permalink to this headline">¶</a></h2>
+<p>The following files are available for testing:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Tests</span><span class="o">/</span><span class="n">cond</span><span class="o">.</span><span class="n">wb</span>          <span class="c1"># A simple conditional</span>
+<span class="n">Tests</span><span class="o">/</span><span class="n">nestedcond</span><span class="o">.</span><span class="n">wb</span>    <span class="c1"># Nested conditionals</span>
+<span class="n">Tests</span><span class="o">/</span><span class="n">fact</span><span class="o">.</span><span class="n">wb</span>          <span class="c1"># Compute factorials</span>
+<span class="n">Tests</span><span class="o">/</span><span class="n">fib</span><span class="o">.</span><span class="n">wb</span>           <span class="c1"># Compute fibonacci numbers</span>
+<span class="n">Tests</span><span class="o">/</span><span class="n">nestedwhile</span><span class="o">.</span><span class="n">wb</span>   <span class="c1"># Nested while loops</span>
+<span class="n">Tests</span><span class="o">/</span><span class="n">badcontrol</span><span class="o">.</span><span class="n">wb</span>    <span class="c1"># Some error checks</span>
+<span class="n">Tests</span><span class="o">/</span><span class="n">mandel_loop</span><span class="o">.</span><span class="n">wb</span>   <span class="c1"># See a mandelbrot set</span>
+</pre></div>
+</div>
+<p>To run the tests, you should just be able to run your compiler using
+your favorite output mode. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="o">-</span><span class="n">m</span> <span class="n">wabbit</span><span class="o">.</span><span class="n">run</span> <span class="n">Tests</span><span class="o">/</span><span class="n">fact</span><span class="o">.</span><span class="n">wb</span>
+<span class="mi">1</span>
+<span class="mi">2</span>
+<span class="mi">6</span>
+<span class="mi">24</span>
+<span class="mi">120</span>
+<span class="mi">720</span>
+<span class="mi">5040</span>
+<span class="mi">40320</span>
+<span class="mi">362880</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Write a Compiler</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="ex0.html">Exercise 0  - Warmup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex1.html">Exercise 1  - Lexing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex2.html">Exercise 2  - Parsing and Abstract Syntax Trees</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex3.html">Exercise 3 - Type Checking</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex4.html">Exercise 4 - Code Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex5.html">Exercise 5 - The Mechanics of Execution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex6.html">Exercise 6 - Relations and Booleans</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex7.html">Exercise 7 - Basic Blocks and Control Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex8.html">Exercise 8 - Functions and Stack Frames</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Overview.html">Compiler Project Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Wabbit.html">Wabbit Language Specification</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Project0.html">Project 0 - Silly Wabbit</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project1.html">Project 1 - Lexing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project2.html">Project 2 - Parsing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project3.html">Project 3 - Types and Program Checking</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project4.html">Project 4 - Code Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project5.html">Project 5 - Code Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project5.html#a-moment-of-zen">A Moment of Zen</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project6.html">Project 6 - Booleans and Relations</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Project 7 - Control Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project8.html">Project 8 - Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project9.html">Project 9 - The End (or just the Beginning?)</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="Project6.html" title="previous chapter">Project 6 - Booleans and Relations</a></li>
+      <li>Next: <a href="Project8.html" title="next chapter">Project 8 - Functions</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, David Beazley.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.9</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
+      
+      |
+      <a href="_sources/Project7.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

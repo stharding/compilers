@@ -1,0 +1,27 @@
+/* irtest1.wb - Binary Operations */
+
+print (3 + 4*5 - 6) / 7;
+print (3.0 + 4.0*5.0 - 6.0) / 7.0;
+
+/* This should produce the following output:
+('CONSTI', 3)
+('CONSTI', 4)
+('CONSTI', 5)
+('MULI',)
+('ADDI',)
+('CONSTI', 6)
+('SUBI',)
+('CONSTI', 7)
+('DIVI',)
+('PRINTI',)
+('CONSTF', 3.0)
+('CONSTF', 4.0)
+('CONSTF', 5.0)
+('MULF',)
+('ADDF',)
+('CONSTF', 6.0)
+('SUBF',)
+('CONSTF', 7.0)
+('DIVF',)
+('PRINTF',)
+*/

@@ -1,0 +1,15 @@
+/* irtest0.wb - Simple literals */
+
+print 3;
+print 3.5;
+print 'a';
+
+/* This should produce the following output:
+
+('CONSTI', 3)
+('PRINTI',)
+('CONSTF', 3.5)
+('PRINTF',)
+('CONSTB', 97)
+('PRINTB',)
+*/

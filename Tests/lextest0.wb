@@ -1,0 +1,12 @@
+/* lextest0.wb
+
+   Test simple tokens. Comments should be ignored.
+ */
+
+/* Simple Tokens */
++ - * / = ;
+
+// Even more tokens
+( ) ^ `
+
+\x222

@@ -1,0 +1,37 @@
+/* checktest0.wb - Symbol tables
+
+Your first step is to track symbols as created by const and var
+declarations like this:
+
+     const pi = 3.14159;
+     var x int;
+
+In the checker.py file, define a symbol table as a dictionary.
+
+     self.symbols = { }
+
+Define visit_ConstDeclaration and visit_VarDeclaration methods
+that put declarations into the symbol table. For example:
+
+     def visit_ConstDeclaration(self, node):
+         self.symbols[node.name] = node
+
+In this example, the AST node itself is put in the symbol table.
+That's fine--keep in mind the symbol table is a mapping of names
+to information about that name. The declaration in the AST
+tells you what the name is.
+
+Define further visit_* methods that allow you detect undefined
+symbols when read in expressions and assigned.
+*/
+
+const pi = 3.14159;         // OK
+var x int;                  // OK
+
+print pi;                   // OK 
+print x;                    // OK
+print y;                    // error. y undefined
+
+x = 45;                     // OK
+z = 13;                     // error. z undefined
+ 

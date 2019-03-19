@@ -1,0 +1,39 @@
+/* Type conversions */
+
+var x int= 42;
+var y float = 4.0;
+
+print x + int(y);
+print float(x) + y;
+print x + int(23);
+print y + float(2.3);
+
+/* Expected output 
+
+('VARI', 'x')
+('CONSTI', 42)
+('STORE', 'x')
+('VARF', 'y')
+('CONSTF', 4.0)
+('STORE', 'y')
+('LOAD', 'x')
+('LOAD', 'y')
+('FTOI',)
+('ADDI',)
+('PRINTI',)
+('LOAD', 'x')
+('ITOF',)
+('LOAD', 'y')
+('ADDF',)
+('PRINTF',)
+('LOAD', 'x')
+('CONSTI', 23)
+('ADDI',)
+('PRINTI',)
+('LOAD', 'y')
+('CONSTF', 2.3)
+('ADDF',)
+('PRINTF',)
+
+*/
+

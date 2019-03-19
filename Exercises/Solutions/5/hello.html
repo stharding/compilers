@@ -1,0 +1,26 @@
+
+<html>
+<body>
+
+  <h3>Program Output</h3>
+
+<pre id="myout">The output is: </pre>
+
+  <script>
+   var imports = { 
+       runtime : {
+            _printi: (x) => { document.getElementById("myout").innerHTML += x + "\n"; },
+       }	   
+    };
+    fetch("out.wasm").then(response =>
+      response.arrayBuffer()
+    ).then(bytes =>
+           WebAssembly.instantiate(bytes, imports)
+    ).then(results => {
+      window.main = results.instance.exports.main;
+      window.main();
+    });
+  </script>
+
+</body>
+</html>

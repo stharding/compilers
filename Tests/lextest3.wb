@@ -1,0 +1,7 @@
+/* lextest3.wb
+
+   Character literals
+ */
+
+'a' '\n' '\x3f' '\'' '\\'  
+

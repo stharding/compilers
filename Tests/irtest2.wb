@@ -1,0 +1,36 @@
+/* irtest2.wb - Unary Operations */
+
+print -(1+2);
+print +(3+4);
+print -(5.0+6.0);
+print +(7.0+8.0);
+
+/*
+This one is a bit tricky.  You may or may not have a unary negation
+operator. So, to implement -x, you'll need to use 0-x.
+For the + operators, nothing much happens.
+
+The following output should be produced:
+
+('CONSTI', 0)
+('CONSTI', 1)
+('CONSTI', 2)
+('ADDI',)
+('SUBI',)
+('PRINTI',)
+('CONSTI', 3)
+('CONSTI', 4)
+('ADDI',)
+('PRINTI',)
+('CONSTF', 0.0)
+('CONSTF', 5.0)
+('CONSTF', 6.0)
+('ADDF',)
+('SUBF',)
+('PRINTF',)
+('CONSTF', 7.0)
+('CONSTF', 8.0)
+('ADDF',)
+('PRINTF',)
+
+*/

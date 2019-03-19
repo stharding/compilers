@@ -1,0 +1,1441 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Exercise 5 - The Mechanics of Execution &#8212; Write a Compiler 0.0 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Exercise 6 - Relations and Booleans" href="ex6.html" />
+    <link rel="prev" title="Exercise 4 - Code Generation" href="ex4.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="exercise-5-the-mechanics-of-execution">
+<h1>Exercise 5 - The Mechanics of Execution<a class="headerlink" href="#exercise-5-the-mechanics-of-execution" title="Permalink to this headline">¶</a></h1>
+<p>Note: This exercise is long and gets into a lot of gross
+details. However, it’s laying the groundwork for Project 5.
+Take your time with it.</p>
+<p>Now that you’ve got your compiler generating intermediate code. Your
+next step is to make it actually do something useful.  This exercise
+introduces the basic mechanics of writing an interpreter, a
+transpiler, and generation of machine code using LLVM and WebAssembly.
+In general, none of this is “hard” except that there often a lot of
+fiddly bits concerning tooling and data formats.</p>
+<p>For this exercise, we’re going to consider the following code fragment:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">var</span> <span class="n">x</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span><span class="p">;</span>
+<span class="n">var</span> <span class="n">y</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">;</span>
+<span class="n">var</span> <span class="n">d</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span> <span class="o">*</span> <span class="n">y</span><span class="p">;</span>
+<span class="nb">print</span> <span class="n">d</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>When compiled by your compiler, this should generate the following
+intermediate code:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">code</span> <span class="o">=</span> <span class="p">[</span>
+   <span class="p">(</span><span class="s1">&#39;VARI&#39;</span><span class="p">,</span> <span class="s1">&#39;x&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;CONSTI&#39;</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;STORE&#39;</span><span class="p">,</span> <span class="s1">&#39;x&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;VARI&#39;</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;CONSTI&#39;</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;STORE&#39;</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;VARI&#39;</span><span class="p">,</span> <span class="s1">&#39;d&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;LOAD&#39;</span><span class="p">,</span> <span class="s1">&#39;x&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;LOAD&#39;</span><span class="p">,</span> <span class="s1">&#39;x&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;MULI&#39;</span><span class="p">,),</span>
+   <span class="p">(</span><span class="s1">&#39;LOAD&#39;</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;LOAD&#39;</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;MULI&#39;</span><span class="p">,),</span>
+   <span class="p">(</span><span class="s1">&#39;ADDI&#39;</span><span class="p">,),</span>
+   <span class="p">(</span><span class="s1">&#39;STORE&#39;</span><span class="p">,</span> <span class="s1">&#39;d&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;LOAD&#39;</span><span class="p">,</span> <span class="s1">&#39;d&#39;</span><span class="p">),</span>
+   <span class="p">(</span><span class="s1">&#39;PRINTI&#39;</span><span class="p">,)</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p>Copy the above <code class="docutils literal notranslate"><span class="pre">code</span></code> variable to a Python file where you can use it
+in some code examples.</p>
+<div class="section" id="part-a-writing-an-interpreter">
+<h2>Part (a) - Writing an Interpreter<a class="headerlink" href="#part-a-writing-an-interpreter" title="Permalink to this headline">¶</a></h2>
+<p>One possible target for your compiler is to write an interpreter.  An
+interpreter directly runs the instructions on a kind of simulated
+machine. The simulated machine has memory, a stack, and a program
+counter just like a real CPU.  Define the following class and try it
+with the above code:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">Interpreter</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">store</span> <span class="o">=</span> <span class="p">{</span> <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stack</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pc</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">code</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pc</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">pc</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">code</span><span class="p">):</span>
+            <span class="n">op</span><span class="p">,</span> <span class="o">*</span><span class="n">opargs</span> <span class="o">=</span> <span class="n">code</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">pc</span><span class="p">]</span>
+            <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="s1">&#39;run_</span><span class="si">{op}</span><span class="s1">&#39;</span><span class="p">)(</span><span class="o">*</span><span class="n">opargs</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pc</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">push</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">pop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">run_VARI</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">run_CONSTI</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">run_STORE</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">run_LOAD</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="p">[</span><span class="n">name</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">run_ADDI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">pop</span><span class="p">())</span>
+
+    <span class="k">def</span> <span class="nf">run_MULI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">pop</span><span class="p">())</span>
+
+    <span class="k">def</span> <span class="nf">run_PRINTI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pop</span><span class="p">())</span>
+
+<span class="c1"># Run it!</span>
+<span class="n">interp</span> <span class="o">=</span> <span class="n">Interpreter</span><span class="p">()</span>
+<span class="n">interp</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Modify your interpreter by giving it a new instruction <code class="docutils literal notranslate"><span class="pre">SUBI</span></code> and
+running it on this program which should produce an output of “1”:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">code</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="s1">&#39;CONSTI&#39;</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+    <span class="p">(</span><span class="s1">&#39;CONSTI&#39;</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
+    <span class="p">(</span><span class="s1">&#39;SUBI&#39;</span><span class="p">,)</span>
+    <span class="p">(</span><span class="s1">&#39;PRINTI&#39;</span><span class="p">,)</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p>Direct interpretation of simulated instructions on a simulated machine
+is how various scripting languages such as Python, Ruby, PHP, and so
+forth work.  This “simulation” is a big part of dynamic typing.  It’s
+also why these languages run substantially slower than compiled languages
+like C.</p>
+</div>
+<div class="section" id="part-b-writing-a-transpiler">
+<h2>Part (b) - Writing a Transpiler<a class="headerlink" href="#part-b-writing-a-transpiler" title="Permalink to this headline">¶</a></h2>
+<p>Instead of directly running intermediate code, another option is to
+turn the code into source code for another programming language such
+as Python or C.  This is how early versions of C++ worked. It’s also
+the basis of modern languages such as TypeScript (transpiled to JavaScript).
+A common target of transpiling is C.   Here is a transpiler that produces
+Python:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">Transpiler</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outcode</span> <span class="o">=</span> <span class="s1">&#39;def main():</span><span class="se">\n</span><span class="s1">&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stack</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">translate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">code</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="o">*</span><span class="n">opargs</span> <span class="ow">in</span> <span class="n">code</span><span class="p">:</span>
+            <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="s1">&#39;translate_</span><span class="si">{op}</span><span class="s1">&#39;</span><span class="p">)(</span><span class="o">*</span><span class="n">opargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outcode</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">main()</span><span class="se">\n</span><span class="s1">&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcode</span>
+
+    <span class="k">def</span> <span class="nf">push</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">pop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">translate_VARI</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">translate_CONSTI</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">translate_STORE</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outcode</span> <span class="o">+=</span> <span class="n">f</span><span class="s1">&#39;    </span><span class="si">{name}</span><span class="s1"> = {self.pop()}</span><span class="se">\n</span><span class="s1">&#39;</span>
+
+    <span class="k">def</span> <span class="nf">translate_LOAD</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">translate_ADDI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;({self.pop()} + {self.pop()})&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">translate_MULI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;({self.pop()} * {self.pop()})&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">translate_PRINTI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outcode</span> <span class="o">+=</span> <span class="n">f</span><span class="s1">&#39;    print({self.pop()})</span><span class="se">\n</span><span class="s1">&#39;</span>
+
+<span class="n">trans</span> <span class="o">=</span> <span class="n">Transpiler</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">trans</span><span class="o">.</span><span class="n">translate</span><span class="p">(</span><span class="n">code</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>In this implementation, you still maintain an internal stack to manage
+the construction of expressions (e.g., certain methods still push and pop
+things from the stack).  However, instead of actually performing an
+operation as with the interpreter, you’re now producing source code to
+perform the operation.</p>
+<p>If you run the program, you should get this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">transpile</span><span class="o">.</span><span class="n">py</span>
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="mi">4</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="mi">5</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="p">((</span><span class="n">y</span> <span class="o">*</span> <span class="n">y</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+
+<span class="n">main</span><span class="p">()</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>Try redirecting the output to a file and running it:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">transpile</span><span class="o">.</span><span class="n">py</span> <span class="o">&gt;</span> <span class="n">out</span><span class="o">.</span><span class="n">py</span>
+<span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">out</span><span class="o">.</span><span class="n">py</span>
+<span class="mi">41</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>See if you can modify the program so that it produces C instead, creating the following
+output code:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1">#include &lt;stdio.h&gt;</span>
+<span class="nb">int</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="nb">int</span> <span class="n">x</span><span class="p">;</span>
+    <span class="nb">int</span> <span class="n">y</span><span class="p">;</span>
+    <span class="nb">int</span> <span class="n">d</span><span class="p">;</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="mi">4</span><span class="p">;</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="mi">5</span><span class="p">;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="p">((</span><span class="n">y</span> <span class="o">*</span> <span class="n">y</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span><span class="p">));</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%i</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">d</span><span class="p">));</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>If you’re making a new language, transpiling is often a easy approach for getting
+things to work.  Take your language, transpile it to C, combine with a few
+library functions and you’re running.</p>
+</div>
+<div class="section" id="part-c-generating-assembly-code-with-llvm">
+<h2>Part (c) - Generating Assembly Code with LLVM<a class="headerlink" href="#part-c-generating-assembly-code-with-llvm" title="Permalink to this headline">¶</a></h2>
+<p>With transpiling, you’re taking a high-level language and producing
+output in a different high-level language.  Instead of that, you could
+compile down to a low-level machine language that is either the actual
+hardware or a very close approximation to it.  One such tool for doing
+that is LLVM.  LLVM is used in a number of major projects such as the
+clang C/C++ compiler.  It’s also used to implement various so-called
+JIT (Just in Time) compilation features.</p>
+<p>LLVM is an extremely large project that can be daunting to jump into.
+However, using it in a simple manner is not so bad. To explore the
+basics, we’re going to use the <code class="docutils literal notranslate"><span class="pre">llvmlite</span></code> package developed by
+Continuum Analytics.  This is available in the Anaconda Python
+distribution so if you’re using that, you should already have it.</p>
+<div class="section" id="llvm-preliminaries">
+<h3>LLVM Preliminaries<a class="headerlink" href="#llvm-preliminaries" title="Permalink to this headline">¶</a></h3>
+<p>Your first task is to make sure Anaconda Python and the clang C/C++
+compiler have been installed on your machine. Please review the README
+file for the compilers project regarding installation notes.</p>
+</div>
+<div class="section" id="hello-world">
+<h3>Hello World<a class="headerlink" href="#hello-world" title="Permalink to this headline">¶</a></h3>
+<p>The first step in using LLVM is to make a LLVM module which contains
+all of the code you will be generating.  Create a file
+<code class="docutils literal notranslate"><span class="pre">hellollvm.py</span></code> and put this code into it:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># hellollvm.py</span>
+<span class="kn">from</span> <span class="nn">llvmlite.ir</span> <span class="k">import</span> <span class="n">Module</span>
+
+<span class="n">mod</span> <span class="o">=</span> <span class="n">Module</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Run the program and you should get some output like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">hellollvm</span><span class="o">.</span><span class="n">py</span>
+<span class="p">;</span> <span class="n">ModuleID</span> <span class="o">=</span> <span class="s2">&quot;hello&quot;</span>
+<span class="n">target</span> <span class="n">triple</span> <span class="o">=</span> <span class="s2">&quot;unknown-unknown-unknown&quot;</span>
+<span class="n">target</span> <span class="n">datalayout</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>The output you’re using is LLVM low-level code–a kind of architecture
+independent assembly language. At this point, it’s not too
+interesting.  However, let’s declare a function to put in the module.
+Change the program to the following to declare a function with the C
+prototype <code class="docutils literal notranslate"><span class="pre">int</span> <span class="pre">hello()</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># hellollvm.py</span>
+
+<span class="kn">from</span> <span class="nn">llvmlite.ir</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">Module</span><span class="p">,</span> <span class="n">Function</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">,</span> <span class="n">IntType</span>
+    <span class="p">)</span>
+
+<span class="n">mod</span> <span class="o">=</span> <span class="n">Module</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+<span class="n">int_type</span> <span class="o">=</span> <span class="n">IntType</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
+<span class="n">hello_func</span> <span class="o">=</span> <span class="n">Function</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="p">[]),</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Running the program, you should now get the following:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">hellollvm</span><span class="o">.</span><span class="n">py</span>
+<span class="p">;</span> <span class="n">ModuleID</span> <span class="o">=</span> <span class="s2">&quot;hello&quot;</span>
+<span class="n">target</span> <span class="n">triple</span> <span class="o">=</span> <span class="s2">&quot;unknown-unknown-unknown&quot;</span>
+<span class="n">target</span> <span class="n">datalayout</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+<span class="n">declare</span> <span class="n">i32</span> <span class="o">@</span><span class="s2">&quot;hello&quot;</span><span class="p">()</span>
+
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>Again, it’s not too interesting at this point.  However, you can see
+how a function declaration was placed in the module output. The LLVM
+statement <code class="docutils literal notranslate"><span class="pre">declare</span> <span class="pre">i32</span> <span class="pre">&#64;&quot;hello&quot;()</span></code> is declaring a function that
+returns a 32-bit integer and takes no arguments.</p>
+<p>Let’s add some code to the function.  To do this, you first need to
+create a basic block. A basic block is a container that holds
+low-level instructions.  Add the following to the program:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># hellollvm.py</span>
+
+<span class="kn">from</span> <span class="nn">llvmlite.ir</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">Module</span><span class="p">,</span> <span class="n">Function</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">,</span> <span class="n">IntType</span><span class="p">,</span> <span class="n">IRBuilder</span>
+    <span class="p">)</span>
+
+<span class="n">mod</span> <span class="o">=</span> <span class="n">Module</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+<span class="n">int_type</span> <span class="o">=</span> <span class="n">IntType</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
+<span class="n">hello_func</span> <span class="o">=</span> <span class="n">Function</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="p">[]),</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+<span class="n">block</span> <span class="o">=</span> <span class="n">hello_func</span><span class="o">.</span><span class="n">append_basic_block</span><span class="p">(</span><span class="s1">&#39;entry&#39;</span><span class="p">)</span>
+<span class="n">builder</span> <span class="o">=</span> <span class="n">IRBuilder</span><span class="p">(</span><span class="n">block</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">ret</span><span class="p">(</span><span class="n">Constant</span><span class="p">(</span><span class="n">IntType</span><span class="p">(</span><span class="mi">32</span><span class="p">),</span> <span class="mi">37</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Running the program should now produce this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">;</span> <span class="n">ModuleID</span> <span class="o">=</span> <span class="s2">&quot;hello&quot;</span>
+<span class="n">target</span> <span class="n">triple</span> <span class="o">=</span> <span class="s2">&quot;unknown-unknown-unknown&quot;</span>
+<span class="n">target</span> <span class="n">datalayout</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+<span class="n">define</span> <span class="n">i32</span> <span class="o">@</span><span class="s2">&quot;hello&quot;</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="n">entry</span><span class="p">:</span>
+  <span class="n">ret</span> <span class="n">i32</span> <span class="mi">37</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>There you are—a complete LLVM function that does nothing but return
+the value 37. Now, a question arises: How do you go about getting it to run?</p>
+</div>
+<div class="section" id="compilation-to-a-standalone-executable">
+<h3>Compilation to a Standalone Executable<a class="headerlink" href="#compilation-to-a-standalone-executable" title="Permalink to this headline">¶</a></h3>
+<p>If you want to run your LLVM generated code, one approach is to feed it
+to a LLVM-based compiler such as <code class="docutils literal notranslate"><span class="pre">clang</span></code>.  Save your generated
+code to a file <code class="docutils literal notranslate"><span class="pre">hello.ll</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">hellollvm</span><span class="o">.</span><span class="n">py</span> <span class="o">&gt;</span> <span class="n">hello</span><span class="o">.</span><span class="n">ll</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>Now, write a short C program to bootstrap the function:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">/*</span> <span class="n">main</span><span class="o">.</span><span class="n">c</span> <span class="o">*/</span>
+<span class="c1">#include &lt;stdio.h&gt;</span>
+
+<span class="n">extern</span> <span class="nb">int</span> <span class="n">hello</span><span class="p">();</span>
+
+<span class="nb">int</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s2">&quot;hello() returned </span><span class="si">%i</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">hello</span><span class="p">());</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Compile this program together with <code class="docutils literal notranslate"><span class="pre">hello.ll</span></code> to make an executable:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">clang</span> <span class="n">main</span><span class="o">.</span><span class="n">c</span> <span class="n">hello</span><span class="o">.</span><span class="n">ll</span>
+<span class="n">bash</span> <span class="o">%</span> <span class="o">./</span><span class="n">a</span><span class="o">.</span><span class="n">out</span>
+<span class="n">hello</span><span class="p">()</span> <span class="n">returned</span> <span class="mi">37</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>This basic technique for invoking your code and creating stand-alone
+programs will be useful for testing and development.  You also get the
+advantage of being able to use C library functions such as
+<code class="docutils literal notranslate"><span class="pre">printf()</span></code>.  Without this, you’d have to figure out how to perform
+I/O directly using low-level LLVM instructions–which would not be
+fun.</p>
+</div>
+<div class="section" id="just-in-time-compilation">
+<h3>Just in Time Compilation<a class="headerlink" href="#just-in-time-compilation" title="Permalink to this headline">¶</a></h3>
+<p>In our example, we are creating LLVM instructions, writing them to a
+file, and using the <code class="docutils literal notranslate"><span class="pre">clang</span></code> compiler to produce an executable.
+It’s possible that this won’t work due to the local setup on
+your machine (maybe you don’t have clang installed correctly).
+One feature of LLVM is that it can compile it’s own code to executable
+machine instructions without ever going to a file or using clang.
+You can do this entirely in Python and have Python call the resulting
+function.</p>
+<p>This part is rather tricky and obscure, but add the following code to
+<code class="docutils literal notranslate"><span class="pre">hellollvm.py</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># hellollvm.py</span>
+
+<span class="o">...</span> <span class="n">keep</span> <span class="n">earlier</span> <span class="n">LLVM</span> <span class="n">example</span> <span class="n">here</span> <span class="o">...</span>
+
+<span class="k">def</span> <span class="nf">run_jit</span><span class="p">(</span><span class="n">module</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">llvmlite.binding</span> <span class="k">as</span> <span class="nn">llvm</span>
+
+    <span class="n">llvm</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+    <span class="n">llvm</span><span class="o">.</span><span class="n">initialize_native_target</span><span class="p">()</span>
+    <span class="n">llvm</span><span class="o">.</span><span class="n">initialize_native_asmprinter</span><span class="p">()</span>
+
+    <span class="n">target</span> <span class="o">=</span> <span class="n">llvm</span><span class="o">.</span><span class="n">Target</span><span class="o">.</span><span class="n">from_default_triple</span><span class="p">()</span>
+    <span class="n">target_machine</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">create_target_machine</span><span class="p">()</span>
+    <span class="n">compiled_mod</span> <span class="o">=</span> <span class="n">llvm</span><span class="o">.</span><span class="n">parse_assembly</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">module</span><span class="p">))</span>
+    <span class="n">engine</span> <span class="o">=</span> <span class="n">llvm</span><span class="o">.</span><span class="n">create_mcjit_compiler</span><span class="p">(</span><span class="n">compiled_mod</span><span class="p">,</span> <span class="n">target_machine</span><span class="p">)</span>
+
+    <span class="c1"># Look up the function pointer (a Python int)</span>
+    <span class="n">func_ptr</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">get_function_address</span><span class="p">(</span><span class="s2">&quot;hello&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Turn into a Python callable using ctypes</span>
+    <span class="kn">from</span> <span class="nn">ctypes</span> <span class="k">import</span> <span class="n">CFUNCTYPE</span><span class="p">,</span> <span class="n">c_int</span>
+    <span class="n">hello</span> <span class="o">=</span> <span class="n">CFUNCTYPE</span><span class="p">(</span><span class="n">c_int</span><span class="p">)(</span><span class="n">func_ptr</span><span class="p">)</span>
+
+    <span class="n">res</span> <span class="o">=</span> <span class="n">hello</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;hello() returned&#39;</span><span class="p">,</span> <span class="n">res</span><span class="p">)</span>
+
+<span class="c1"># Run it!</span>
+<span class="n">run_jit</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If you run this, you should see the program run the code, and
+produce output such as this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">hellollvm</span><span class="o">.</span><span class="n">py</span>
+<span class="n">hello</span><span class="p">()</span> <span class="n">returned</span> <span class="mi">37</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>This version runs entirely inside an active Python interpreter process.
+If you can’t get clang to work, you can always use this as a fallback.</p>
+</div>
+<div class="section" id="local-variables-and-math-operations">
+<h3>Local Variables and Math Operations<a class="headerlink" href="#local-variables-and-math-operations" title="Permalink to this headline">¶</a></h3>
+<p>To do more with LLVM, you need to use more instructions on the
+<code class="docutils literal notranslate"><span class="pre">builder</span></code> object in the example.   To declare a local variable “x”,
+you use this method:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To load and store values, you use these instructions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">r</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>        <span class="c1"># Load a value from x into r</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>        <span class="c1"># Store r into y</span>
+</pre></div>
+</div>
+<p>To perform arithmetic, you use instructions such as these:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">r3</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">r1</span><span class="p">,</span> <span class="n">r2</span><span class="p">)</span>   <span class="c1"># r3 = r1 + r2</span>
+<span class="n">r3</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">mul</span><span class="p">(</span><span class="n">r1</span><span class="p">,</span> <span class="n">r2</span><span class="p">)</span>   <span class="c1"># r3 = r1 + r2</span>
+</pre></div>
+</div>
+<p>Here is an example that implements the program given at the start
+of this exercise:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># hellollvm.py</span>
+<span class="kn">from</span> <span class="nn">llvmlite.ir</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">Module</span><span class="p">,</span> <span class="n">Function</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">,</span> <span class="n">IntType</span><span class="p">,</span>
+    <span class="n">Constant</span><span class="p">,</span> <span class="n">IRBuilder</span>
+    <span class="p">)</span>
+
+<span class="n">mod</span> <span class="o">=</span> <span class="n">Module</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+<span class="n">int_type</span> <span class="o">=</span> <span class="n">IntType</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
+
+<span class="n">hello_func</span> <span class="o">=</span> <span class="n">Function</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="p">[]),</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+<span class="n">block</span> <span class="o">=</span> <span class="n">hello_func</span><span class="o">.</span><span class="n">append_basic_block</span><span class="p">(</span><span class="s1">&#39;entry&#39;</span><span class="p">)</span>
+<span class="n">builder</span> <span class="o">=</span> <span class="n">IRBuilder</span><span class="p">(</span><span class="n">block</span><span class="p">)</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;x&#39;</span><span class="p">)</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;y&#39;</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">Constant</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">x</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">Constant</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">y</span><span class="p">)</span>
+<span class="n">r1</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">r2</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">mul</span><span class="p">(</span><span class="n">r1</span><span class="p">,</span> <span class="n">r1</span><span class="p">)</span>
+<span class="n">r3</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+<span class="n">r4</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">mul</span><span class="p">(</span><span class="n">r3</span><span class="p">,</span> <span class="n">r3</span><span class="p">)</span>
+<span class="n">r5</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">r2</span><span class="p">,</span> <span class="n">r4</span><span class="p">)</span>
+<span class="n">d</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;d&#39;</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">r5</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">ret</span><span class="p">(</span><span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>An important thing about LLVM is that it is NOT a stack machine. It is based
+on registers and Single Static Assignment (SSA).  Basically, every operation
+produces a new variable that can only be assigned once.  It also requires explicit
+load/store instructions to go between local variables and registers.  In the
+above example, you can’t do an instruction such as <code class="docutils literal notranslate"><span class="pre">builder.add(x,</span> <span class="pre">y)</span></code> between
+local variables.  You have to load the variables into registers first and
+perform the instruction on the registers.</p>
+<p>Try compiling the above program and running you code again:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">hellollvm</span><span class="o">.</span><span class="n">py</span> <span class="o">&gt;</span> <span class="n">hello</span><span class="o">.</span><span class="n">ll</span>
+<span class="n">bash</span> <span class="o">%</span> <span class="n">clang</span> <span class="n">main</span><span class="o">.</span><span class="n">c</span> <span class="n">hello</span><span class="o">.</span><span class="n">ll</span>
+<span class="n">bash</span> <span class="o">%</span> <span class="o">./</span><span class="n">a</span><span class="o">.</span><span class="n">out</span>
+<span class="n">hello</span><span class="p">()</span> <span class="n">returned</span> <span class="mi">41</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="calling-an-external-function">
+<h3>Calling an external function<a class="headerlink" href="#calling-an-external-function" title="Permalink to this headline">¶</a></h3>
+<p>Even though you’re emitting low-level assembly code, there’s no need
+to completely reinvent the wheel from scratch.  One problem concerns
+printing.  In our IR code, there is an instruction to print a value
+to the screen.  How do you do that in LLVM?  The short answer is that
+you don’t (well, unless you’re some kind of masochist).  You do printing
+in C.  Make a new file <code class="docutils literal notranslate"><span class="pre">runtime.c</span></code> and put a
+a <code class="docutils literal notranslate"><span class="pre">_print_int()</span></code> function in it like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">/*</span> <span class="n">runtime</span><span class="o">.</span><span class="n">c</span> <span class="o">*/</span>
+<span class="c1">#include &lt;stdio.h&gt;</span>
+
+<span class="n">void</span> <span class="n">_print_int</span><span class="p">(</span><span class="nb">int</span> <span class="n">x</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s2">&quot;out: </span><span class="si">%i</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">x</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Now, suppose you wanted to call that function from LLVM.  To do it,
+you need to declare it:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># hellollvm.py</span>
+<span class="o">...</span>
+<span class="kn">from</span> <span class="nn">llvmlite.ir</span> <span class="k">import</span> <span class="n">VoidType</span><span class="p">,</span> <span class="n">IntType</span>
+
+<span class="n">void_type</span> <span class="o">=</span> <span class="n">VoidType</span><span class="p">()</span>
+<span class="n">int_type</span> <span class="o">=</span> <span class="n">IntType</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
+
+<span class="n">_print_int</span> <span class="o">=</span> <span class="n">Function</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span>
+                     <span class="n">FunctionType</span><span class="p">(</span><span class="n">void_type</span><span class="p">,</span> <span class="p">[</span><span class="n">int_type</span><span class="p">]),</span>
+                     <span class="n">name</span><span class="o">=</span><span class="s1">&#39;_print_int&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To call the function, you use the <code class="docutils literal notranslate"><span class="pre">builder.call()</span></code> instruction:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">r2</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">_print_int</span><span class="p">,</span> <span class="p">[</span><span class="n">r1</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>Change your <code class="docutils literal notranslate"><span class="pre">hellollvm.py</span></code> program so that it looks like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># hellollvm.py</span>
+
+<span class="kn">from</span> <span class="nn">llvmlite.ir</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">Module</span><span class="p">,</span> <span class="n">Function</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">,</span> <span class="n">IntType</span><span class="p">,</span> <span class="n">VoidType</span><span class="p">,</span>
+    <span class="n">Constant</span><span class="p">,</span> <span class="n">IRBuilder</span>
+    <span class="p">)</span>
+
+<span class="n">mod</span> <span class="o">=</span> <span class="n">Module</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+
+<span class="n">int_type</span> <span class="o">=</span> <span class="n">IntType</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
+<span class="n">void_type</span> <span class="o">=</span> <span class="n">VoidType</span><span class="p">()</span>
+
+<span class="n">_print_int</span> <span class="o">=</span> <span class="n">Function</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span>
+                      <span class="n">FunctionType</span><span class="p">(</span><span class="n">void_type</span><span class="p">,</span> <span class="p">[</span><span class="n">int_type</span><span class="p">]),</span>
+                      <span class="n">name</span><span class="o">=</span><span class="s1">&#39;_print_int&#39;</span><span class="p">)</span>
+
+<span class="n">hello_func</span> <span class="o">=</span> <span class="n">Function</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="p">[]),</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;hello&#39;</span><span class="p">)</span>
+<span class="n">block</span> <span class="o">=</span> <span class="n">hello_func</span><span class="o">.</span><span class="n">append_basic_block</span><span class="p">(</span><span class="s1">&#39;entry&#39;</span><span class="p">)</span>
+<span class="n">builder</span> <span class="o">=</span> <span class="n">IRBuilder</span><span class="p">(</span><span class="n">block</span><span class="p">)</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;x&#39;</span><span class="p">)</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;y&#39;</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">Constant</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">x</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">Constant</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">y</span><span class="p">)</span>
+<span class="n">t1</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">t2</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">t3</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">mul</span><span class="p">(</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">)</span>
+<span class="n">t4</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+<span class="n">t5</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+<span class="n">t6</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">mul</span><span class="p">(</span><span class="n">t4</span><span class="p">,</span> <span class="n">t5</span><span class="p">)</span>
+<span class="n">t7</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">t3</span><span class="p">,</span> <span class="n">t6</span><span class="p">)</span>
+<span class="n">d</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;d&#39;</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">t7</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">_print_int</span><span class="p">,</span> <span class="p">[</span><span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">d</span><span class="p">)])</span>     <span class="c1"># Call _print_int()</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">ret</span><span class="p">(</span><span class="n">Constant</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="mi">37</span><span class="p">))</span>             <span class="c1"># Return 37</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Compile and run (note inclusion of <code class="docutils literal notranslate"><span class="pre">runtime.c</span></code>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">hellollvm</span><span class="o">.</span><span class="n">py</span> <span class="o">&gt;</span> <span class="n">hello</span><span class="o">.</span><span class="n">ll</span>
+<span class="n">bash</span> <span class="o">%</span> <span class="n">clang</span> <span class="n">main</span><span class="o">.</span><span class="n">c</span> <span class="n">runtime</span><span class="o">.</span><span class="n">c</span> <span class="n">hello</span><span class="o">.</span><span class="n">ll</span>
+<span class="n">bash</span> <span class="o">%</span> <span class="o">./</span><span class="n">a</span><span class="o">.</span><span class="n">out</span>
+<span class="n">out</span><span class="p">:</span> <span class="mi">41</span>
+<span class="n">hello</span><span class="p">()</span> <span class="n">returned</span> <span class="mi">37</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>Notice that there is output from the <code class="docutils literal notranslate"><span class="pre">_print_int()</span></code> function as well as
+the return value from the <code class="docutils literal notranslate"><span class="pre">hello()</span></code> function itself.</p>
+<p>As an aside, you can implement almost anything that you want in C and
+link it as library code into your output assembly code.  Printing,
+memory access, and all sorts of other things could potentially be
+written in this way.  You’ll have to do some of this in the project.</p>
+</div>
+<div class="section" id="compiling-to-llvm">
+<h3>Compiling to LLVM<a class="headerlink" href="#compiling-to-llvm" title="Permalink to this headline">¶</a></h3>
+<p>In building your compiler, you’ll need to figure out how to translate
+IR code into the appropriate low-level LLVM operations.  This part
+is left to the project, but the mechanics of it are going to be almost
+identical to the interpreter/transpiler exercises you did earlier.
+You need to keep track of variables. You need a stack to keep track of
+LLVM values. Most of the code generation will involve operations on this
+stack.</p>
+</div>
+<div class="section" id="a-llvm-mini-reference">
+<h3>A LLVM Mini-Reference<a class="headerlink" href="#a-llvm-mini-reference" title="Permalink to this headline">¶</a></h3>
+<p>This section aims to provide a mini-reference for using LLVM in the
+next part of the project.   It summarizes some of the critical bits.</p>
+<p>For creating LLVM code, use the following import:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">llvmlite.ir</span> <span class="k">import</span> <span class="p">(</span>
+      <span class="n">Module</span><span class="p">,</span> <span class="n">Function</span><span class="p">,</span> <span class="n">FunctionType</span><span class="p">,</span> <span class="n">IRBuilder</span><span class="p">,</span>
+      <span class="n">IntType</span><span class="p">,</span> <span class="n">DoubleType</span><span class="p">,</span> <span class="n">VoidType</span><span class="p">,</span> <span class="n">Constant</span>
+      <span class="p">)</span>
+</pre></div>
+</div>
+<p>All LLVM code is placed in a module.  You create one like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mod</span> <span class="o">=</span> <span class="n">Module</span><span class="p">(</span><span class="s2">&quot;modname&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>You declare functions like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">func</span> <span class="o">=</span> <span class="n">Function</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span>
+                <span class="n">FunctionType</span><span class="p">(</span><span class="n">rettype</span><span class="p">,</span> <span class="p">[</span><span class="n">argtypes</span><span class="p">]),</span>
+                <span class="n">name</span><span class="o">=</span><span class="s2">&quot;funcname&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The following basic datatypes are used heavily in declarations:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">IntType</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>             <span class="c1"># A 32-bit integer</span>
+<span class="n">DoubleType</span><span class="p">()</span>            <span class="c1"># A double-precision float</span>
+</pre></div>
+</div>
+<p>It is usually easier to make aliases for the types:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">int_type</span> <span class="o">=</span> <span class="n">IntType</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
+<span class="n">float_type</span> <span class="o">=</span> <span class="n">DoubleType</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>To define constants corresponding to the above types, do this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">c</span> <span class="o">=</span> <span class="n">Constant</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+<span class="n">d</span> <span class="o">=</span> <span class="n">Constant</span><span class="p">(</span><span class="n">float_type</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To start adding code to a function, you must add a basic block
+and create a builder.  For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">block</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">append_basic_block</span><span class="p">(</span><span class="s1">&#39;entry&#39;</span><span class="p">)</span>
+<span class="n">builder</span> <span class="o">=</span> <span class="n">IRBuilder</span><span class="p">(</span><span class="n">block</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Builder objects have a variety of useful methods for adding
+instructions.  These include:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Returning values</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">ret</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">ret_void</span><span class="p">()</span>
+
+<span class="c1"># Integer math</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">mul</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">sdiv</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>
+
+<span class="c1"># Floating math</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">fadd</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">fsub</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">fmul</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">fdiv</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span>
+
+<span class="c1"># Function call</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>When using the builder, it is important to emphasize that you must
+save the results of the above operations and use them in subsequent
+calls.  For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">t1</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">fmul</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+<span class="n">t2</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">fmul</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+<span class="n">t3</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">fadd</span><span class="p">(</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">)</span>
+<span class="o">...</span>
+</pre></div>
+</div>
+<p>To declare a local variable do something like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">name_var</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="n">int_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;varname&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To access a local variable, use load and store instructions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">tmp</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">name_var</span><span class="p">)</span>
+<span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="n">name_var</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="part-d-taking-it-to-the-web-assembly">
+<h2>Part (d) - Taking it to the Web (Assembly)<a class="headerlink" href="#part-d-taking-it-to-the-web-assembly" title="Permalink to this headline">¶</a></h2>
+<p>As our final target, we’re going to compile our code to Web Assembly
+(Wasm).  Wasm is a relatively new technology that is usually
+introduced with a fairly complicated toolchain.  For example, it is
+possible to compile C, C++, Rust, and other languages to Wasm and to
+have that code run (somehow) in the browser.  You can even find demos
+of game engines and other interesting things.  However, it can be a
+bit tough to wrap your brain around what’s happening.  In this last
+part, we’re going to look at raw low-level Wasm without any assistive
+tooling.  This is not the way that you’d likely work with it for real,
+but for the purposes of a compilers course, it’s instructive.</p>
+<p>At a high-level, Wasm is a small “machine code” that is not too unlike
+the IR Code for our compiler.  It simulates a stack machine and it
+only understands 4 datatypes–integers and floats in both 32-bit and
+64-bit encodings.  The main difference is that Wasm is encoded in a
+compact binary encoding—not a list of tuples as we have done.
+Much of our effort to make Wasm work concerns details of the binary
+encoding.</p>
+<div class="section" id="low-level-encoding-of-values">
+<h3>Low-level Encoding of Values<a class="headerlink" href="#low-level-encoding-of-values" title="Permalink to this headline">¶</a></h3>
+<p>To start out, there are some basic encodings of integers, floats, and
+text strings that need to take place.</p>
+<p>Integers are encoded into a LEB-128, a variable length encoding. The
+following functions can be used for this purpose:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_unsigned</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Produce an LEB128 encoded unsigned integer.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">parts</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">((</span><span class="n">value</span><span class="o">.</span><span class="n">bit_length</span><span class="p">()</span> <span class="o">//</span> <span class="mi">7</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">value</span> <span class="o">&amp;</span> <span class="mh">0x7f</span><span class="p">)</span> <span class="o">|</span> <span class="mh">0x80</span><span class="p">)</span>
+        <span class="n">value</span> <span class="o">&gt;&gt;=</span> <span class="mi">7</span>
+    <span class="k">if</span> <span class="n">value</span><span class="p">:</span>
+        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">parts</span><span class="p">:</span>
+        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&amp;=</span> <span class="mh">0x7f</span>
+    <span class="k">return</span> <span class="nb">bytes</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">encode_signed</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Produce a LEB128 encoded signed integer.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">bit_length</span><span class="p">()</span> <span class="o">+</span> <span class="p">(</span><span class="mi">7</span> <span class="o">-</span> <span class="n">value</span><span class="o">.</span><span class="n">bit_length</span><span class="p">()</span> <span class="o">%</span> <span class="mi">7</span><span class="p">)))</span> <span class="o">+</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Floating point numbers are encoded directly as a little-endian 8-byte double precision
+value using this function:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_f64</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Encode a 64-bit float point as little endian</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">return</span> <span class="n">struct</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="s1">&#39;&lt;d&#39;</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Wasm sometimes involves the encoding of a so-called “vector”.  A vector is
+list of identically typed items. For example, you could have a vector of
+integers, a vector of floats, a vector of bytes, and so forth.  Vectors are
+encoded as an unsigned length followed by the raw encoding of whatever items
+it contains.  So, write the following function:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_vector</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    A size-prefixed collection of objects.  If items is already</span>
+<span class="sd">    bytes, it is prepended by a length and returned.  If items</span>
+<span class="sd">    is a list of byte-strings, the length of the list is prepended</span>
+<span class="sd">    to byte-string formed by concatenating all of the items.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">))</span> <span class="o">+</span> <span class="n">items</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">))</span> <span class="o">+</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">items</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Names are represented as a UTF-8 encoded vector of bytes.  The following
+function will encoded a name:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_name</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Encode a text name as a UTF-8 vector</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">return</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">name</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>The first rule of Wasm is that ALL literal values (integers, floats, names, etc.) must
+be encoded by the functions. So, put these in a file <code class="docutils literal notranslate"><span class="pre">wasm.py</span></code> and use it as a starting
+point.</p>
+<p>Try a few examples to see what the encodings look like:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">encode_unsigned</span><span class="p">(</span><span class="mi">1234</span><span class="p">)</span>
+<span class="go">b&#39;\xd2\t&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">encode_signed</span><span class="p">(</span><span class="o">-</span><span class="mi">1234</span><span class="p">)</span>
+<span class="go">b&#39;\xae\xf6\x00&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">encode_f64</span><span class="p">(</span><span class="mf">123.45</span><span class="p">)</span>
+<span class="go">b&#39;\xcd\xcc\xcc\xcc\xcc\xdc^@&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">encode_name</span><span class="p">(</span><span class="s1">&#39;spam&#39;</span><span class="p">)</span>
+<span class="go">b&#39;\x04spam&#39;</span>
+<span class="go">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>Reminder: You must use these functions.</p>
+</div>
+<div class="section" id="some-basic-instructions">
+<h3>Some Basic Instructions<a class="headerlink" href="#some-basic-instructions" title="Permalink to this headline">¶</a></h3>
+<p>Wasm defines a set of instructions similar to our own IR code.  Wasm
+is also a stack machine just like our IR code. The following table
+shows a few basic instruction encodings:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x20</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">idx</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">local</span><span class="o">.</span><span class="n">get</span> <span class="p">(</span><span class="n">idx</span> <span class="ow">is</span> <span class="n">local</span><span class="o">-</span><span class="n">variable</span> <span class="n">index</span><span class="o">.</span> <span class="n">unsigned</span> <span class="nb">int</span><span class="p">)</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x21</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">idx</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">local</span><span class="o">.</span><span class="n">set</span> <span class="p">(</span><span class="n">idx</span> <span class="ow">is</span> <span class="n">local</span><span class="o">-</span><span class="n">variable</span> <span class="n">index</span><span class="o">.</span> <span class="n">unsigned</span> <span class="nb">int</span><span class="p">)</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x41</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">val</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">const</span> <span class="p">(</span><span class="n">val</span> <span class="ow">is</span> <span class="n">signed</span> <span class="n">integer</span><span class="p">)</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6a</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">add</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6b</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">sub</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6c</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">mul</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6d</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">div_s</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x0f</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="k">return</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x10</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">idx</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">call</span> <span class="p">(</span><span class="n">idx</span> <span class="ow">is</span> <span class="n">function</span> <span class="n">index</span><span class="o">.</span> <span class="n">unsigned</span> <span class="nb">int</span><span class="p">)</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x0b</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">end</span> <span class="n">block</span>
+</pre></div>
+</div>
+<p>One tricky thing in the instruction encoding is that there are no text strings or
+names.  Everything is referenced by numeric indices.  For local variables,
+you (as in the compiler) need to keep a table mapping names to local variable
+indices. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nb">vars</span> <span class="o">=</span> <span class="p">{</span>
+   <span class="s1">&#39;x&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+   <span class="s1">&#39;y&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+   <span class="s1">&#39;d&#39;</span><span class="p">:</span> <span class="mi">2</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>An instruction such as <code class="docutils literal notranslate"><span class="pre">('LOAD',</span> <span class="pre">'x')</span></code> is going to map to a byte sequence
+like <code class="docutils literal notranslate"><span class="pre">b'\x20'</span> <span class="pre">+</span> <span class="pre">encode_unsigned(vars['x'])</span></code> where the name gets replaced
+by a numeric index.</p>
+<p>Using this, we can write a basic Wasm instruction encoder for our example
+code. This is surprising easy—since Wasm is also a stack machine, we
+don’t need to maintain a stack or do much of anything other than translate
+the tuples of IR code into the binary coded version in Wasm:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">WasmEncoder</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">encode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">code</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vars</span> <span class="o">=</span> <span class="p">{</span> <span class="p">}</span>
+        <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="o">*</span><span class="n">opargs</span> <span class="ow">in</span> <span class="n">code</span><span class="p">:</span>
+            <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="s1">&#39;encode_</span><span class="si">{op}</span><span class="s1">&#39;</span><span class="p">)(</span><span class="o">*</span><span class="n">opargs</span><span class="p">)</span>
+
+        <span class="c1"># Put a block terminator on the code</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x0b</span><span class="s1">&#39;</span>
+
+    <span class="k">def</span> <span class="nf">encode_VARI</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vars</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vars</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">encode_CONSTI</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x41</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_signed</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">encode_STORE</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x21</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vars</span><span class="p">[</span><span class="n">name</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">encode_LOAD</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x20</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vars</span><span class="p">[</span><span class="n">name</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">encode_ADDI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6a</span><span class="s1">&#39;</span>
+
+    <span class="k">def</span> <span class="nf">encode_MULI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6c</span><span class="s1">&#39;</span>
+
+    <span class="k">def</span> <span class="nf">encode_PRINTI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Not sure what to do here yet</span>
+        <span class="k">pass</span>
+
+<span class="n">encoder</span> <span class="o">=</span> <span class="n">WasmEncoder</span><span class="p">()</span>
+<span class="n">encoder</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">encoder</span><span class="o">.</span><span class="n">wcode</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Try running this example. You should get some low-level output that looks like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">wasm</span><span class="o">.</span><span class="n">py</span>
+<span class="sa">b</span><span class="s1">&#39;A</span><span class="se">\x04</span><span class="s1">!</span><span class="se">\x00</span><span class="s1">A</span><span class="se">\x05</span><span class="s1">!</span><span class="se">\x01</span><span class="s1"> </span><span class="se">\x00</span><span class="s1"> </span><span class="se">\x00</span><span class="s1">l </span><span class="se">\x01</span><span class="s1"> </span><span class="se">\x01</span><span class="s1">lj!</span><span class="se">\x02</span><span class="s1"> </span><span class="se">\x02\x0b</span><span class="s1">&#39;</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>It’s not meant to be easily human readable.</p>
+</div>
+<div class="section" id="types-and-function-code-encoding">
+<h3>Types and Function Code Encoding<a class="headerlink" href="#types-and-function-code-encoding" title="Permalink to this headline">¶</a></h3>
+<p>The low-level instruction stream you just generated is not enough to make Wasm
+work.  For one thing, Wasm expects all code to be packaged up inside a proper
+function object.  We haven’t done anything like that.  We also didn’t address anything
+related to the declaration of local variables or types (yes, the code included
+the indices of local variables, but no proper declaration of those variables).</p>
+<p>Wasm only has a few core datatypes. Instead of being referenced by nice names
+like “int” or “float”, they are identified by specific byte codes:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span>   <span class="o">=&gt;</span> <span class="n">i32</span> <span class="p">(</span><span class="mi">32</span><span class="o">-</span><span class="n">bit</span> <span class="nb">int</span><span class="p">)</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7e</span><span class="s1">&#39;</span>   <span class="o">=&gt;</span> <span class="n">i64</span> <span class="p">(</span><span class="mi">64</span><span class="o">-</span><span class="n">bit</span> <span class="nb">int</span><span class="p">)</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7d</span><span class="s1">&#39;</span>   <span class="o">=&gt;</span> <span class="n">f32</span> <span class="p">(</span><span class="mi">32</span><span class="o">-</span><span class="n">bit</span> <span class="nb">float</span><span class="p">)</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7c</span><span class="s1">&#39;</span>   <span class="o">=&gt;</span> <span class="n">f64</span> <span class="p">(</span><span class="mi">64</span><span class="o">-</span><span class="n">bit</span> <span class="nb">float</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Remember our local variables?  In our code, we created a mapping of names
+to indices:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nb">vars</span> <span class="o">=</span> <span class="p">{</span>
+   <span class="s1">&#39;x&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+   <span class="s1">&#39;y&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+   <span class="s1">&#39;d&#39;</span><span class="p">:</span> <span class="mi">2</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>This is not enough–you also need to keep a record of their types:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vartypes</span> <span class="o">=</span> <span class="p">[</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span> <span class="p">]</span>
+</pre></div>
+</div>
+<p>Think of this as a kind of “type-signature” for all of the
+locals. When encoding Wasm, the code for a function need to be encoded
+with information about the locals. Now, unfortunately, this next bit
+is a bit gnarly.  Basically, the locals are grouped by type and
+represented as a list of length/type combinations.  Like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">group</span> <span class="o">=</span> <span class="p">[</span>
+     <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span><span class="p">),</span>      <span class="c1"># 3 local variables of type i32</span>
+     <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7c</span><span class="s1">&#39;</span><span class="p">),</span>      <span class="c1"># 2 local variables of type f64</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p>Each group is encoded as a repeat-count followed by the type code.
+All of the groups are then encoded as a vector.  Here’s code that
+illustrates how it works:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">parts</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+<span class="k">for</span> <span class="n">count</span><span class="p">,</span> <span class="nb">type</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">:</span>
+    <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">encode_unsigned</span><span class="p">(</span><span class="n">count</span><span class="p">)</span> <span class="o">+</span> <span class="nb">type</span><span class="p">)</span>
+
+<span class="n">enc_locals</span> <span class="o">=</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The resulting encoding of the local variables is then prepended to the
+function code that you created earlier to create the encoded function
+code:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">func</span> <span class="o">=</span> <span class="n">enc_locals</span> <span class="o">+</span> <span class="n">encoder</span><span class="o">.</span><span class="n">wcode</span>
+</pre></div>
+</div>
+<p>Finally, this whole byte sequence is prepended by its length in bytes. So,
+you do this to get the final function object:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">func</span> <span class="o">=</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">func</span><span class="p">))</span> <span class="o">+</span> <span class="n">func</span>
+</pre></div>
+</div>
+<p>Try modifying your <code class="docutils literal notranslate"><span class="pre">WasmEncoder</span></code> class so that it looks like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">itertools</span>
+
+<span class="k">class</span> <span class="nc">WasmEncoder</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># List of function objects created</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">functions</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">encode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">code</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vars</span> <span class="o">=</span> <span class="p">{</span> <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vartypes</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="o">*</span><span class="n">opargs</span> <span class="ow">in</span> <span class="n">code</span><span class="p">:</span>
+            <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="s1">&#39;encode_</span><span class="si">{op}</span><span class="s1">&#39;</span><span class="p">)(</span><span class="o">*</span><span class="n">opargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x0b</span><span class="s1">&#39;</span>
+
+        <span class="c1"># Create the proper encoding of the entire function</span>
+        <span class="n">groups</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">ty</span><span class="p">,</span> <span class="n">items</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vartypes</span><span class="p">):</span>
+            <span class="n">groups</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">items</span><span class="p">)),</span> <span class="n">ty</span><span class="p">))</span>
+
+        <span class="n">parts</span> <span class="o">=</span> <span class="p">[</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="n">count</span><span class="p">)</span> <span class="o">+</span> <span class="n">ty</span> <span class="k">for</span> <span class="n">count</span><span class="p">,</span> <span class="n">ty</span> <span class="ow">in</span> <span class="n">groups</span> <span class="p">]</span>
+        <span class="n">enc_locals</span> <span class="o">=</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
+        <span class="n">func</span> <span class="o">=</span> <span class="n">enc_locals</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">functions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">encode_unsigned</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">func</span><span class="p">))</span> <span class="o">+</span> <span class="n">func</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">encode_VARI</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vars</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vars</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vartypes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span><span class="p">)</span>
+
+    <span class="o">...</span> <span class="n">rest</span> <span class="n">unchanged</span>
+
+<span class="n">encoder</span> <span class="o">=</span> <span class="n">WasmEncoder</span><span class="p">()</span>
+<span class="n">encoder</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">encoder</span><span class="o">.</span><span class="n">functions</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Try running the code.  You should get this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="n">wasm</span><span class="o">.</span><span class="n">py</span>
+<span class="p">[</span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x1b\x01\x03\x7f</span><span class="s1">A</span><span class="se">\x04</span><span class="s1">!</span><span class="se">\x00</span><span class="s1">A</span><span class="se">\x05</span><span class="s1">!</span><span class="se">\x01</span><span class="s1"> </span><span class="se">\x00</span><span class="s1"> </span><span class="se">\x00</span><span class="s1">l </span><span class="se">\x01</span><span class="s1"> </span><span class="se">\x01</span><span class="s1">lj!</span><span class="se">\x02</span><span class="s1"> </span><span class="se">\x02\x0b</span><span class="s1">&#39;</span><span class="p">]</span>
+<span class="n">bash</span> <span class="o">%</span>
+</pre></div>
+</div>
+<p>Is that enough to run the function?  No, it’s not.  We haven’t specified anything
+about the function name, its type signature, or anything else.  More work is to
+be done.</p>
+</div>
+<div class="section" id="functions-names-and-type-signatures">
+<h3>Functions, Names, and Type Signatures<a class="headerlink" href="#functions-names-and-type-signatures" title="Permalink to this headline">¶</a></h3>
+<p>So far, our Wasm encoder has created a low-level code object. This object has
+the raw instructions for a function, but no other information is given.  We
+need to create a type signature, function name, and exports.</p>
+<p>When you define a function, there are input arguments and return values.  For
+example, in C, you might write a function like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">double</span> <span class="n">func</span><span class="p">(</span><span class="nb">int</span> <span class="n">x</span><span class="p">,</span> <span class="nb">int</span> <span class="n">y</span><span class="p">)</span> <span class="p">{</span>
+     <span class="o">...</span>
+     <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The signature for this function specifies that there are two integer
+inputs and a double return type.  In Wasm, this information is
+expressed as a pair of type-vectors like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[(</span><span class="n">i32</span><span class="p">,</span> <span class="n">i32</span><span class="p">),</span> <span class="p">(</span><span class="n">f64</span><span class="p">,)]</span>
+</pre></div>
+</div>
+<p>or if you fill in the type-codes:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[(</span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span><span class="p">),</span> <span class="p">(</span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7c</span><span class="s1">&#39;</span><span class="p">,)]</span>
+</pre></div>
+</div>
+<p>To encode a type signature, you use the following function:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_signature</span><span class="p">(</span><span class="n">argtypes</span><span class="p">,</span> <span class="n">rettypes</span><span class="p">):</span>
+    <span class="k">return</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x60</span><span class="s1">\ + encode_vector(argtypes) + encode_vector(rettypes)</span>
+</pre></div>
+</div>
+<p>The result of this encoding should be put in a table.  The index within this table
+should be recorded.  For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">typesigs</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">typesigs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">encode_signature</span><span class="p">(</span><span class="n">argstypes</span><span class="p">,</span> <span class="n">rettypes</span><span class="p">))</span>
+<span class="n">typeidx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">typesigs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>All functions in Wasm are assigned a unique numerical index.  This index points
+to the code object that you made in the last section.  However, the index also
+points to a separate list of type signatures.  You need to keep a list like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">functypes</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+<span class="n">functypes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">typeidx</span><span class="p">)</span>    <span class="c1"># Save the function type signature</span>
+<span class="n">funcidx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">functypes</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>Last, but not least, you will notice that the function still has not been
+given a name.  That needs to be encoded in the form of a function export.
+To encode an export, you encode the function name, along with the function
+index like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">export</span> <span class="o">=</span> <span class="n">encode_name</span><span class="p">(</span><span class="n">funcname</span><span class="p">)</span> <span class="o">+</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x00</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="n">funcidx</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Admittedly, this is a lot to unpack, but here is a modified WasmEncoder
+class that encodes a type signature, updates a functypes list, and creates
+a function export record:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">i32</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span>
+<span class="n">f64</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7c</span><span class="s1">&#39;</span>
+
+<span class="k">class</span> <span class="nc">WasmEncoder</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># List of function objects created</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">functions</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">typesigs</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">functypes</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exports</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">encode_function</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">argtypes</span><span class="p">,</span> <span class="n">rettypes</span><span class="p">,</span> <span class="n">code</span><span class="p">):</span>
+
+        <span class="c1"># Create a type signature</span>
+        <span class="n">typesig</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x60</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">argtypes</span><span class="p">)</span> <span class="o">+</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">rettypes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">typesigs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">typesig</span><span class="p">)</span>
+        <span class="n">typeidx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typesigs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+
+        <span class="c1"># Add the typeidx to the functypes list</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">functypes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">typeidx</span><span class="p">)</span>
+        <span class="n">funcidx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">functypes</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+
+        <span class="c1"># Add the funcidx to the exports list</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exports</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">encode_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="o">+</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x00</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="n">funcidx</span><span class="p">))</span>
+
+        <span class="c1"># Now make the function instructions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vars</span> <span class="o">=</span> <span class="p">{</span> <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vartypes</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">op</span><span class="p">,</span> <span class="o">*</span><span class="n">opargs</span> <span class="ow">in</span> <span class="n">code</span><span class="p">:</span>
+            <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="s1">&#39;encode_</span><span class="si">{op}</span><span class="s1">&#39;</span><span class="p">)(</span><span class="o">*</span><span class="n">opargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x0b</span><span class="s1">&#39;</span>
+
+        <span class="c1"># Create the proper encoding of the entire function</span>
+        <span class="n">groups</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">ty</span><span class="p">,</span> <span class="n">items</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vartypes</span><span class="p">):</span>
+            <span class="n">groups</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">items</span><span class="p">)),</span> <span class="n">ty</span><span class="p">))</span>
+
+        <span class="n">parts</span> <span class="o">=</span> <span class="p">[</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="n">count</span><span class="p">)</span> <span class="o">+</span> <span class="n">ty</span> <span class="k">for</span> <span class="n">count</span><span class="p">,</span> <span class="n">ty</span> <span class="ow">in</span> <span class="n">groups</span> <span class="p">]</span>
+        <span class="n">enc_locals</span> <span class="o">=</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
+        <span class="n">func</span> <span class="o">=</span> <span class="n">enc_locals</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">functions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">encode_unsigned</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">func</span><span class="p">))</span> <span class="o">+</span> <span class="n">func</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">encode_VARI</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vars</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vars</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vartypes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span><span class="p">)</span>
+
+    <span class="o">...</span> <span class="n">rest</span> <span class="n">unchanged</span> <span class="o">...</span>
+
+<span class="n">encoder</span> <span class="o">=</span> <span class="n">WasmEncoder</span><span class="p">()</span>
+<span class="n">encoder</span><span class="o">.</span><span class="n">encode_function</span><span class="p">(</span><span class="s2">&quot;main&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="p">[</span><span class="n">i32</span><span class="p">],</span> <span class="n">code</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Try running this code and looking at the different pieces of the encoder:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="o">-</span><span class="n">i</span> <span class="n">wasm</span><span class="o">.</span><span class="n">py</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">encoder</span><span class="o">.</span><span class="n">typesigs</span>
+<span class="p">[</span><span class="sa">b</span><span class="s1">&#39;`</span><span class="se">\x00\x01\x7f</span><span class="s1">&#39;</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">encoder</span><span class="o">.</span><span class="n">functypes</span>
+<span class="p">[</span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x00</span><span class="s1">&#39;</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">encoder</span><span class="o">.</span><span class="n">exports</span>
+<span class="p">[</span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x04</span><span class="s1">main</span><span class="se">\x00\x00</span><span class="s1">&#39;</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">encoder</span><span class="o">.</span><span class="n">functions</span>
+<span class="p">[</span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x1b\x01\x03\x7f</span><span class="s1">A</span><span class="se">\x04</span><span class="s1">!</span><span class="se">\x00</span><span class="s1">A</span><span class="se">\x05</span><span class="s1">!</span><span class="se">\x01</span><span class="s1"> </span><span class="se">\x00</span><span class="s1"> </span><span class="se">\x00</span><span class="s1">l </span><span class="se">\x01</span><span class="s1"> </span><span class="se">\x01</span><span class="s1">lj!</span><span class="se">\x02</span><span class="s1"> </span><span class="se">\x02\x0b</span><span class="s1">&#39;</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>You are almost in business here.  Your last task is to make a Wasm module.</p>
+</div>
+<div class="section" id="encoding-a-module">
+<h3>Encoding a Module<a class="headerlink" href="#encoding-a-module" title="Permalink to this headline">¶</a></h3>
+<p>Your final step in encoding Wasm is to make an encoded module. A module
+is broken up into sections and looks like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>               <span class="o">+----------------------------+</span>
+<span class="n">Header</span>    <span class="p">:</span>    <span class="o">|</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x00</span><span class="s1">asm</span><span class="se">\x01\x00\x00\x00</span><span class="s1">&#39;</span> <span class="o">|</span>
+               <span class="o">+----------------------------+</span>
+<span class="n">Section</span> <span class="mi">1</span> <span class="p">:</span>    <span class="o">|</span>    <span class="nb">type</span> <span class="n">signatures</span>         <span class="o">|</span>
+               <span class="o">+----------------------------+</span>
+<span class="n">Section</span> <span class="mi">3</span> <span class="p">:</span>    <span class="o">|</span>    <span class="n">function</span> <span class="n">types</span>          <span class="o">|</span>
+               <span class="o">+----------------------------+</span>
+<span class="n">Section</span> <span class="mi">7</span> <span class="p">:</span>    <span class="o">|</span>    <span class="n">exports</span>                 <span class="o">|</span>
+               <span class="o">+----------------------------+</span>
+<span class="n">Section</span> <span class="mi">10</span> <span class="p">:</span>   <span class="o">|</span>    <span class="n">function</span> <span class="n">code</span>           <span class="o">|</span>
+               <span class="o">+----------------------------+</span>
+</pre></div>
+</div>
+<p>There are other optional sections that are not needed right now.  The encoding
+of each section is a 1-byte section number, a section length, and section contents.
+Write the following functions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_section</span><span class="p">(</span><span class="n">sectnum</span><span class="p">,</span> <span class="n">contents</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">bytes</span><span class="p">([</span><span class="n">sectnum</span><span class="p">])</span> <span class="o">+</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">contents</span><span class="p">))</span> <span class="o">+</span> <span class="n">contents</span>
+</pre></div>
+</div>
+<p>The contents of each section is encoded as a vector. So, to encode
+section 1 for instance, you would do this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">encode_section</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">typesigs</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Put all of this together by writing an <code class="docutils literal notranslate"><span class="pre">encode_module()</span></code> method like
+this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">WasmEncoder</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># List of function objects created</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">functions</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">typesigs</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">functypes</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exports</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+
+    <span class="o">...</span>
+    <span class="k">def</span> <span class="nf">encode_module</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">module</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x00</span><span class="s1">asm</span><span class="se">\x01\x00\x00\x00</span><span class="s1">&#39;</span>
+        <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typesigs</span><span class="p">))</span>
+        <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">functypes</span><span class="p">))</span>
+        <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exports</span><span class="p">))</span>
+        <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">functions</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">module</span>
+
+<span class="c1"># Example use:</span>
+<span class="n">encoder</span> <span class="o">=</span> <span class="n">WasmEncoder</span><span class="p">()</span>
+<span class="n">encoder</span><span class="o">.</span><span class="n">encode_function</span><span class="p">(</span><span class="s2">&quot;main&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="p">[</span><span class="n">i32</span><span class="p">],</span> <span class="n">code</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;out.wasm&#39;</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+    <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">encoder</span><span class="o">.</span><span class="n">encode_module</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>Put this in your file and run it.  You should get a file <code class="docutils literal notranslate"><span class="pre">out.wasm</span></code>
+written in the current directory.</p>
+</div>
+<div class="section" id="loading-it-in-the-browser">
+<h3>Loading it in the Browser<a class="headerlink" href="#loading-it-in-the-browser" title="Permalink to this headline">¶</a></h3>
+<p>Wasm doesn’t run by itself.  It needs to be launched from Javascript.
+Create a file <code class="docutils literal notranslate"><span class="pre">hello.html</span></code> that contains the following HTML and
+Javascript:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&lt;</span><span class="n">html</span><span class="o">&gt;</span>
+<span class="o">&lt;</span><span class="n">body</span><span class="o">&gt;</span>
+<span class="o">&lt;</span><span class="n">h3</span><span class="o">&gt;</span><span class="n">Program</span> <span class="n">Output</span><span class="o">&lt;/</span><span class="n">h3</span><span class="o">&gt;</span>
+
+<span class="o">&lt;</span><span class="n">pre</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;myout&quot;</span><span class="o">&gt;</span><span class="n">The</span> <span class="n">output</span> <span class="ow">is</span><span class="p">:</span> <span class="o">&lt;/</span><span class="n">pre</span><span class="o">&gt;</span>
+
+<span class="o">&lt;</span><span class="n">script</span><span class="o">&gt;</span>
+    <span class="n">var</span> <span class="n">imports</span> <span class="o">=</span> <span class="p">{</span> <span class="p">};</span>
+    <span class="n">fetch</span><span class="p">(</span><span class="s2">&quot;out.wasm&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">response</span> <span class="o">=&gt;</span>
+       <span class="n">response</span><span class="o">.</span><span class="n">arrayBuffer</span><span class="p">()</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="nb">bytes</span> <span class="o">=&gt;</span>
+       <span class="n">WebAssembly</span><span class="o">.</span><span class="n">instantiate</span><span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="n">imports</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">results</span> <span class="o">=&gt;</span> <span class="p">{</span>
+       <span class="n">window</span><span class="o">.</span><span class="n">main</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">instance</span><span class="o">.</span><span class="n">exports</span><span class="o">.</span><span class="n">main</span><span class="p">;</span>
+       <span class="n">out</span> <span class="o">=</span> <span class="n">window</span><span class="o">.</span><span class="n">main</span><span class="p">();</span>
+       <span class="n">document</span><span class="o">.</span><span class="n">getElementById</span><span class="p">(</span><span class="s2">&quot;myout&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">innerHTML</span> <span class="o">+=</span> <span class="n">out</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">;</span>
+    <span class="p">});</span>
+<span class="o">&lt;/</span><span class="n">script</span><span class="o">&gt;</span>
+<span class="o">&lt;/</span><span class="n">body</span><span class="o">&gt;</span>
+<span class="o">&lt;/</span><span class="n">html</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<p>In this code, the <code class="docutils literal notranslate"><span class="pre">out.wasm</span></code> file is fetched and instantiated into a WebAssembly
+instance.  The <code class="docutils literal notranslate"><span class="pre">main()</span></code> function is lifted out of the instance exports
+section. When called, it’s output is appended to the HTML in the <code class="docutils literal notranslate"><span class="pre">&lt;pre&gt;</span></code>
+section at the top.</p>
+<p>To test this, go to the command line and the same directory as the <code class="docutils literal notranslate"><span class="pre">hello.html</span></code>
+and <code class="docutils literal notranslate"><span class="pre">out.wasm</span></code> file.  Run the following Python command:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">bash</span> <span class="o">%</span> <span class="n">python3</span> <span class="o">-</span><span class="n">m</span> <span class="n">http</span><span class="o">.</span><span class="n">server</span>
+</pre></div>
+</div>
+<p>This launches a web server.  Now click on
+<a class="reference external" href="http://localhost:8000/hello.html">http://localhost:8000/hello.html</a>.  You should see an output of “41”.
+If you see nothing, open the JavaScript dev console in your browser,
+reload, and look for error messages.  Even the slightest error in
+encoding your module will cause it to fail. Ask for help if stuck.</p>
+</div>
+<div class="section" id="building-the-runtime">
+<h3>Building the Runtime<a class="headerlink" href="#building-the-runtime" title="Permalink to this headline">¶</a></h3>
+<p>Wasm is extremely low-level and minimal.  Keep in mind you only get integers and floats.
+There are no strings. Or even any built-in functions!  Wasm doesn’t get access to
+any part of Javascript or the browser environment all by itself.  This
+presents certain logistical problems.  For example, how do you implement the
+<code class="docutils literal notranslate"><span class="pre">PRINTI</span></code> instruction?</p>
+<p>The solution here is the same as the solution in LLVM!  If you want printing,
+you implement in JavaScript, not Wasm.   Go to the <code class="docutils literal notranslate"><span class="pre">hello.html</span></code> file and
+modify the code so it looks like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&lt;</span><span class="n">html</span><span class="o">&gt;</span>
+<span class="o">&lt;</span><span class="n">body</span><span class="o">&gt;</span>
+<span class="o">&lt;</span><span class="n">h3</span><span class="o">&gt;</span><span class="n">Program</span> <span class="n">Output</span><span class="o">&lt;/</span><span class="n">h3</span><span class="o">&gt;</span>
+
+<span class="o">&lt;</span><span class="n">pre</span> <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;myout&quot;</span><span class="o">&gt;</span><span class="n">The</span> <span class="n">output</span> <span class="ow">is</span><span class="p">:</span> <span class="o">&lt;/</span><span class="n">pre</span><span class="o">&gt;</span>
+
+<span class="o">&lt;</span><span class="n">script</span><span class="o">&gt;</span>
+    <span class="n">var</span> <span class="n">imports</span> <span class="o">=</span> <span class="p">{</span>
+       <span class="n">runtime</span> <span class="p">:</span> <span class="p">{</span>
+           <span class="n">_printi</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span> <span class="n">document</span><span class="o">.</span><span class="n">getElementById</span><span class="p">(</span><span class="s2">&quot;myout&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">innerHTML</span> <span class="o">+=</span> <span class="n">x</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">;</span> <span class="p">},</span>
+       <span class="p">}</span>
+     <span class="p">};</span>
+    <span class="n">fetch</span><span class="p">(</span><span class="s2">&quot;out.wasm&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">response</span> <span class="o">=&gt;</span>
+       <span class="n">response</span><span class="o">.</span><span class="n">arrayBuffer</span><span class="p">()</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="nb">bytes</span> <span class="o">=&gt;</span>
+       <span class="n">WebAssembly</span><span class="o">.</span><span class="n">instantiate</span><span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="n">imports</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">then</span><span class="p">(</span><span class="n">results</span> <span class="o">=&gt;</span> <span class="p">{</span>
+       <span class="n">window</span><span class="o">.</span><span class="n">main</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">instance</span><span class="o">.</span><span class="n">exports</span><span class="o">.</span><span class="n">main</span><span class="p">;</span>
+       <span class="n">window</span><span class="o">.</span><span class="n">main</span><span class="p">();</span>
+    <span class="p">});</span>
+<span class="o">&lt;/</span><span class="n">script</span><span class="o">&gt;</span>
+<span class="o">&lt;/</span><span class="n">body</span><span class="o">&gt;</span>
+<span class="o">&lt;/</span><span class="n">html</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<p>Carefully observe that we have added a <code class="docutils literal notranslate"><span class="pre">_printi()</span></code> function to the
+<code class="docutils literal notranslate"><span class="pre">imports</span></code> variable.  The original output at the end has been
+removed.</p>
+<p>To make the <cite>_printi</cite> function available to Wasm, it has to be explicitly
+imported.  This is done by making import records as shown in this code:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">WasmEncoder</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># List of function objects created</span>
+        <span class="o">...</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">imports</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+
+        <span class="c1"># Import built-in runtime functions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_printi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">import_function</span><span class="p">(</span><span class="s1">&#39;runtime&#39;</span><span class="p">,</span> <span class="s1">&#39;_printi&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">i32</span><span class="p">],</span> <span class="p">[])</span>
+
+    <span class="k">def</span> <span class="nf">import_function</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">argtypes</span><span class="p">,</span> <span class="n">rettypes</span><span class="p">):</span>
+        <span class="c1"># Make a type signature</span>
+        <span class="n">typesig</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x60</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">argtypes</span><span class="p">)</span> <span class="o">+</span> <span class="n">encode_vector</span><span class="p">(</span><span class="n">rettypes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">typesigs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">typesig</span><span class="p">)</span>
+        <span class="n">typeidx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typesigs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+
+        <span class="c1"># Make an import record</span>
+        <span class="n">enc</span> <span class="o">=</span> <span class="n">encode_name</span><span class="p">(</span><span class="n">module</span><span class="p">)</span> <span class="o">+</span> <span class="n">encode_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="o">+</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x00</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="n">typeidx</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">imports</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">enc</span><span class="p">)</span>
+        <span class="n">funcidx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">imports</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">funcidx</span>
+</pre></div>
+</div>
+<p>In this code, the <code class="docutils literal notranslate"><span class="pre">import_function()</span></code> operation is making a reference to externally
+defined function (in this case, a function coming from the JavaScript environment).</p>
+<p>With a reference to externel <cite>_printi</cite> function now saved, you can implement the
+<code class="docutils literal notranslate"><span class="pre">PRINTI</span></code> instruction to make a call-out:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_PRINTI</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">wcode</span> <span class="o">+=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x10</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">encode_unsigned</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_printi</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>There are a few additional minor changes that need to be made to the
+<code class="docutils literal notranslate"><span class="pre">WasmEncoder</span></code> class.  First, the <code class="docutils literal notranslate"><span class="pre">funcidx</span></code> value needs to take
+number of imports into account.  There is a fragment of code like
+this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_function</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">argtypes</span><span class="p">,</span> <span class="n">rettypes</span><span class="p">,</span> <span class="n">code</span><span class="p">):</span>
+    <span class="o">...</span>
+
+    <span class="c1"># Add the typeidx to the functypes list</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">functypes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">encode_unsigned</span><span class="p">(</span><span class="n">typeidx</span><span class="p">))</span>
+    <span class="n">funcidx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">functypes</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>That needs to change to the following:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_function</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">argtypes</span><span class="p">,</span> <span class="n">rettypes</span><span class="p">,</span> <span class="n">code</span><span class="p">):</span>
+    <span class="o">...</span>
+
+    <span class="c1"># Add the typeidx to the functypes list</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">functypes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">encode_unsigned</span><span class="p">(</span><span class="n">typeidx</span><span class="p">))</span>
+    <span class="n">funcidx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">imports</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">functypes</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>   <span class="c1"># &lt;&lt;&lt; CHANGED</span>
+</pre></div>
+</div>
+<p>The module encoding code also needs to add a new section:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">encode_module</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="n">module</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x00</span><span class="s1">asm</span><span class="se">\x01\x00\x00\x00</span><span class="s1">&#39;</span>
+    <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">typesigs</span><span class="p">))</span>
+    <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">imports</span><span class="p">))</span>  <span class="c1"># &lt;&lt;&lt; ADD THIS</span>
+    <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">functypes</span><span class="p">))</span>
+    <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exports</span><span class="p">))</span>
+    <span class="n">module</span> <span class="o">+=</span> <span class="n">encode_section</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">encode_vector</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">functions</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">module</span>
+</pre></div>
+</div>
+<p>Finally, you may need to change the type-signature of the <code class="docutils literal notranslate"><span class="pre">main()</span></code> function.
+It is no-longer returning a value (it’s being consumed by the <code class="docutils literal notranslate"><span class="pre">PRINTI</span></code>
+instruction instead).  So, change the code at the bottom:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">encoder</span> <span class="o">=</span> <span class="n">WasmEncoder</span><span class="p">()</span>
+<span class="n">encoder</span><span class="o">.</span><span class="n">encode_function</span><span class="p">(</span><span class="s2">&quot;main&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="p">[],</span> <span class="n">code</span><span class="p">)</span>    <span class="c1"># &lt;&lt;&lt; CHANGED</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;out.wasm&#39;</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+    <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">encoder</span><span class="o">.</span><span class="n">encode_module</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>Try running your code to produce another <code class="docutils literal notranslate"><span class="pre">out.wasm</span></code> file and reload the hello page
+in the browser.  You should see output being produced as before. If not, you’ll
+have to do some debugging.  Whew!  That was some work.</p>
+</div>
+<div class="section" id="a-wasm-mini-reference">
+<h3>A Wasm Mini Reference<a class="headerlink" href="#a-wasm-mini-reference" title="Permalink to this headline">¶</a></h3>
+<p>This section provides a short reference of useful Wasm instructions
+and data encoding</p>
+<p>Types:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span>     <span class="o">=&gt;</span> <span class="n">i32</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7c</span><span class="s1">&#39;</span>     <span class="o">=&gt;</span> <span class="n">f64</span>
+</pre></div>
+</div>
+<p>It is usually easier to make aliases for the types:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">i32</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7f</span><span class="s1">&#39;</span>
+<span class="n">f64</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x7c</span><span class="s1">&#39;</span>
+</pre></div>
+</div>
+<p>To define constants corresponding to the above types, do this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x41</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">value</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">const</span> <span class="n">value</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x44</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">value</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">f64</span><span class="o">.</span><span class="n">const</span> <span class="n">value</span>
+</pre></div>
+</div>
+<p>Here are some useful opcodes for math:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6a</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">add</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6b</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">sub</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6c</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">mul</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x6d</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">i32</span><span class="o">.</span><span class="n">div_s</span>
+
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\xa0</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">f64</span><span class="o">.</span><span class="n">add</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\xa1</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">f64</span><span class="o">.</span><span class="n">sub</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\xa2</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">f64</span><span class="o">.</span><span class="n">mul</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\xa3</span><span class="s1">&#39;</span>        <span class="o">=&gt;</span> <span class="n">f64</span><span class="o">.</span><span class="n">div</span>
+</pre></div>
+</div>
+<p>To access a local variable, use load and store instructions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x20</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">idx</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">local</span><span class="o">.</span><span class="n">get</span>
+<span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x21</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">idx</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">local</span><span class="o">.</span><span class="n">set</span>
+</pre></div>
+</div>
+<p>To call a function:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="sa">b</span><span class="s1">&#39;</span><span class="se">\x10</span><span class="s1">&#39;</span> <span class="o">&lt;</span><span class="n">idx</span><span class="o">&gt;</span>  <span class="o">=&gt;</span> <span class="n">call</span>  <span class="p">(</span><span class="n">idx</span> <span class="ow">is</span> <span class="n">function</span> <span class="n">index</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>More instructions can be found in the Wasm official specification.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Write a Compiler</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="ex0.html">Exercise 0  - Warmup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex1.html">Exercise 1  - Lexing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex2.html">Exercise 2  - Parsing and Abstract Syntax Trees</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex3.html">Exercise 3 - Type Checking</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex4.html">Exercise 4 - Code Generation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Exercise 5 - The Mechanics of Execution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex6.html">Exercise 6 - Relations and Booleans</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex7.html">Exercise 7 - Basic Blocks and Control Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex8.html">Exercise 8 - Functions and Stack Frames</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Overview.html">Compiler Project Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Wabbit.html">Wabbit Language Specification</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Project0.html">Project 0 - Silly Wabbit</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project1.html">Project 1 - Lexing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project2.html">Project 2 - Parsing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project3.html">Project 3 - Types and Program Checking</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project4.html">Project 4 - Code Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project5.html">Project 5 - Code Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project5.html#a-moment-of-zen">A Moment of Zen</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project6.html">Project 6 - Booleans and Relations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project7.html">Project 7 - Control Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project8.html">Project 8 - Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project9.html">Project 9 - The End (or just the Beginning?)</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="ex4.html" title="previous chapter">Exercise 4 - Code Generation</a></li>
+      <li>Next: <a href="ex6.html" title="next chapter">Exercise 6 - Relations and Booleans</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, David Beazley.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.9</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
+      
+      |
+      <a href="_sources/ex5.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -1,0 +1,47 @@
+/* parsetest4.wb
+
+   You need to add support for the concepts of reading and assigning values.
+   First, there is the more general concept of a "location".  For example:
+
+       print 1 + <location> ;
+       <location> = 1 + 2 ;
+
+   In our language, a "location" could be a simple variable name.  For example:
+
+       var x int = 1;
+       print 1 + x;
+       x = 1 + 2;
+
+   A location can also refer to a memory location using the backtick (`)
+   operator.
+
+       print 1 + `x;     // Read from memory location x
+       `x = 1 + 2;       // Store to memory location x
+
+   To do this part, you need to define AST nodes for locations:
+
+       class Location(AST):
+           pass
+
+       class SimpleLocation(Location):
+           name : str
+
+       class MemoryLocation(Location):
+           addr : Expression
+
+   You then need to modify your grammar to allow locations to be used
+   in expressions *and* in assignment statements.   This might require
+   more AST nodes to be defined.
+*/
+
+var x int = 1;
+print 1 + x;
+x = 1 + 2;
+
+`(2 + 2) = 1234;   // Assign to memory location 4
+x = `4 + 2;        // Read from memory location 4 and add 2 to the result
+
+/* There is also a special operator ^ used to grow memory. */
+
+var memsize int = ^0;
+print(^(x*10));

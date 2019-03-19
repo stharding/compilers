@@ -1,0 +1,55 @@
+/* parsetest5.wb
+
+   Add precedence specifiers.   Consider the two statements:
+
+      print 2 * 3 + 4;
+      print 2 + 3 * 4;
+
+   These two statements should group operations differently. For
+   example, with added parens to emphasize ordering:
+
+      print (2 * 3) + 4;
+      print 2 + (3 * 4);
+
+   Run your parser on this file and carefully study the output.
+   Figure out what's wrong with it.
+*/
+
+print 2 * 3 + 4;
+print 2 + 3 * 4;
+
+/* Fix the precedence by filling in the following precedence table
+   in the parser.
+
+   precedence = (
+        ('left', PLUS, MINUS),
+        ('left', TIMES, DIVIDE),
+   )
+
+   Note: Making this change should make shift/reduce errors go away.
+ */
+
+/* What about the following statements involving unary operators?
+   Specifically, does -2 + 3 parse as -2 + 3 or is it -(2 + 3)?
+*/
+
+print -2 + 3;
+
+/* The memory dereferencing operators are unary operators that tightly
+   bind to the expression immediately to the right.  For example:
+
+   `expr + expr       ->  (`expr) + expr
+   ^expr + expr       ->  (^expr) + expr
+
+   You may need to specify precedence rules for these as well:
+
+   precedence = (
+        ('left', PLUS, MINUS),
+        ('left', TIMES, DIVIDE),
+        ('right', DEREF, GROW)
+   )
+*/
+
+var x int = `0 + 4;          
+var y int = `0 + `4;
+var z int = ^0 + 4;

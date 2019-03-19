@@ -1,0 +1,65 @@
+/* checktest7.wb - Memory
+
+Okay, who thought of the crazy memory operators in Wabbit? 
+That's probably a discussion for a different day, but here
+are the rules on it.
+
+First, there is the ^ operator which is meant to grow memory.
+It takes an integer argument and always returns an integer.
+For the most part, this should be easy to check.  The
+following tests try different combinations:
+*/
+
+var memsize int = ^0;       // This should typecheck, no errors
+var a float = ^0;           // Type error. ^ returns an int.
+var b int = ^3.14159;       // Type error. ^ only works on ints.
+
+// It should also work with expressions
+memsize = ^(1 + 2 + 3 + 4); 
+
+// This should produce a type error
+print 3.4 + ^0;            // Type error. float + int.
+
+/* Then there is the memory dereferencing operator (`).
+   The backtick ` can only be applied to an integer address. That
+   part should also be easy to check.
+*/
+
+var c int = `1234;      // OK.
+var d int = `12.34;     // ERROR. Memory address is a float
+
+/* The mind-bending part of the back-tick operator is that it's
+   associated "type" is determined by surrounding context.
+   If the type can't be determined, it defaults to char.
+   You'll need to figure out how to propagate it some sort
+   of sane way.  Here are various examples */
+
+var e int = `1234;      // OK. Type is int.
+var f float = `1234;    // OK. Type is float.
+var g char = `1234;     // OK. Type is char.
+
+// These should also work
+e = `1234;              // Ok. Type is int
+f = `1234;              // Ok. Type is float
+g = `1234;              // Ok. Type is char
+
+print(`1234 + 10);      // OK. Type is int.
+print(`1234 + 10.0);    // OK. Type is float.
+print(`1234);           // OK. Defaults to char.
+
+`1234 = `1234 + 10;     // Ok. Adds 10 to integer at 1234.
+`1234 = `1234 + 10.0;   // Ok. Adds 10.0 to float at 1234.
+`1234 = `4567;          // Ok. Copies a character from 1234 to 4567.
+
+// This should fail. Type can't be determined.
+
+var h int = ``1234;     
+
+// But this works.  Because of course it does. 
+var i int = `(`1234 + 0);
+
+// This should work
+var j int = `int(`1234);
+
+// This fails (+ operator is confused).  Could it be made to work?
+var k int = `1000 + `2000;

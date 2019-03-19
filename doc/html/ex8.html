@@ -1,0 +1,349 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Exercise 8 - Functions and Stack Frames &#8212; Write a Compiler 0.0 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Compiler Project Overview" href="Overview.html" />
+    <link rel="prev" title="Exercise 7 - Basic Blocks and Control Flow" href="ex7.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="exercise-8-functions-and-stack-frames">
+<h1>Exercise 8 - Functions and Stack Frames<a class="headerlink" href="#exercise-8-functions-and-stack-frames" title="Permalink to this headline">¶</a></h1>
+<p>Programming languages let you defined user-defined functions.
+For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">square</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">x</span><span class="o">*</span><span class="n">x</span>
+</pre></div>
+</div>
+<p>In this exercise, we refresh a few basics.</p>
+<div class="section" id="scoping-rules">
+<h2>Scoping Rules<a class="headerlink" href="#scoping-rules" title="Permalink to this headline">¶</a></h2>
+<p>Variables defined inside a function are local to that
+function.  For example, if you define:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">foo</span><span class="p">():</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="mi">3</span>
+</pre></div>
+</div>
+<p>Then the variables <code class="docutils literal notranslate"><span class="pre">a</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code> are local to that
+function.  If there are global variables with the same name,
+there are no conflicts.  Moreover, calling the function
+won’t overwrite the global values:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">foo</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span>
+<span class="go">10</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span>
+</pre></div>
+</div>
+<p>On the other hand, functions can access the value of globals.
+For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">bar</span><span class="p">():</span>
+<span class="go">        print(x)</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="mi">42</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">bar</span><span class="p">()</span>
+<span class="go">42</span>
+<span class="go">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>In general, all code in Python executes in two scopes–a local scope
+which is the enclosing function and a global scope which is the
+containing module.    This two-scoping rule is at the very heart of
+the interpreter itself.  You can control it explicitly if you use the
+<code class="docutils literal notranslate"><span class="pre">exec</span></code> function.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">gvars</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;x&#39;</span><span class="p">:</span> <span class="mi">10</span><span class="p">}</span>    <span class="c1"># Global scope</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lvars</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>     <span class="c1"># Local scope</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">exec</span><span class="p">(</span><span class="s2">&quot;for i in range(n): print(i+x)&quot;</span><span class="p">,</span> <span class="n">gvars</span><span class="p">,</span> <span class="n">lvars</span><span class="p">)</span>
+<span class="go">10</span>
+<span class="go">11</span>
+<span class="go">12</span>
+<span class="go">13</span>
+<span class="go">14</span>
+<span class="go">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>Under the covers, Python generates different instructions for local/global
+manipulation of variables.  For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">foo</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+<span class="go">        global b</span>
+<span class="go">        a = 2*a</span>
+<span class="go">        b = 2*b</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dis</span><span class="o">.</span><span class="n">dis</span><span class="p">(</span><span class="n">foo</span><span class="p">)</span>
+<span class="go">  3           0 LOAD_CONST               1 (2)</span>
+<span class="go">              3 LOAD_FAST                0 (a)           # Local</span>
+<span class="go">              6 BINARY_MULTIPLY</span>
+<span class="go">              7 STORE_FAST               0 (a)           # Local</span>
+
+<span class="go">  4          10 LOAD_CONST               1 (2)</span>
+<span class="go">             13 LOAD_GLOBAL              0 (b)           # Global</span>
+<span class="go">             16 BINARY_MULTIPLY</span>
+<span class="go">             17 STORE_GLOBAL             0 (b)           # Global</span>
+<span class="go">             20 LOAD_CONST               0 (None)</span>
+<span class="go">             23 RETURN_VALUE</span>
+<span class="go">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>In this code, local variables are accessed using <code class="docutils literal notranslate"><span class="pre">LOAD_FAST</span></code> and
+<code class="docutils literal notranslate"><span class="pre">STORE_FAST</span></code> instructions whereas global variables are accessed
+using <code class="docutils literal notranslate"><span class="pre">LOAD_GLOBAL</span></code> and <code class="docutils literal notranslate"><span class="pre">STORE_GLOBAL</span></code>.   When you define a function,
+Python compiles it and is able to determine the scope of each variable
+in advance (all variables assigned in a function are local unless
+explicitly overridden with the <code class="docutils literal notranslate"><span class="pre">global</span></code> declaration).</p>
+</div>
+<div class="section" id="activation-frames">
+<h2>Activation Frames<a class="headerlink" href="#activation-frames" title="Permalink to this headline">¶</a></h2>
+<p>Every time you call a function, a new stack frame (or activation
+frame) gets created.  The stack frame is a storage area for all of the
+local variables defined inside the function.  For example, suppose you
+had this code:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">foo</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="mi">10</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="mi">20</span>
+
+<span class="k">def</span> <span class="nf">bar</span><span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="n">b</span><span class="p">):</span>
+   <span class="n">c</span> <span class="o">=</span> <span class="mi">30</span>
+   <span class="n">foo</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">spam</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+   <span class="n">bar</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="mi">100</span>
+<span class="n">spam</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Under the covers the execution stack looks like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">|----------------|</span>
+<span class="o">|</span><span class="n">__main__</span><span class="p">:</span>       <span class="o">|</span>
+<span class="o">|</span>   <span class="n">x</span> <span class="o">=</span> <span class="mi">100</span>      <span class="o">|</span>
+<span class="o">|----------------|</span>
+<span class="o">|</span><span class="n">spam</span><span class="p">:</span>           <span class="o">|</span>
+<span class="o">|</span>   <span class="n">a</span> <span class="o">=</span> <span class="mi">100</span>      <span class="o">|</span>
+<span class="o">|----------------|</span>
+<span class="o">|</span><span class="n">bar</span><span class="p">:</span>            <span class="o">|</span>
+<span class="o">|</span>   <span class="n">a</span> <span class="o">=</span> <span class="mi">0</span>        <span class="o">|</span>
+<span class="o">|</span>   <span class="n">b</span> <span class="o">=</span> <span class="mi">100</span>      <span class="o">|</span>
+<span class="o">|</span>   <span class="n">c</span> <span class="o">=</span> <span class="mi">30</span>       <span class="o">|</span>
+<span class="o">|----------------|</span>
+<span class="o">|</span><span class="n">foo</span><span class="p">:</span>            <span class="o">|</span>
+<span class="o">|</span>   <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span>        <span class="o">|</span>
+<span class="o">|</span>   <span class="n">y</span> <span class="o">=</span> <span class="mi">10</span>       <span class="o">|</span>
+<span class="o">|</span>   <span class="n">z</span> <span class="o">=</span> <span class="mi">20</span>       <span class="o">|</span>
+<span class="o">|----------------|</span>
+</pre></div>
+</div>
+<p>You can directly see Python’s stack structure whenever an exception occurs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">spam</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+<span class="gt">Traceback (most recent call last):</span>
+<span class="gr"> File &quot;&lt;stdin&gt;&quot;, line 1, in &lt;module&gt;</span>
+<span class="gr"> File &quot;&lt;stdin&gt;&quot;, line 2, in spam</span>
+<span class="gr"> File &quot;&lt;stdin&gt;&quot;, line 2, in bar</span>
+<span class="gr"> File &quot;&lt;stdin&gt;&quot;, line 2, in foo</span>
+<span class="gr">RuntimeError</span>: <span class="n">An error occurred</span>
+</pre></div>
+</div>
+<p>A little known fact about Python is that you can manually get a hook
+for walking up and down the call stack if you call
+<code class="docutils literal notranslate"><span class="pre">sys._getframe()</span></code>.  Try it:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">sys</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">printstack</span><span class="p">():</span>
+<span class="go">        frame = sys._getframe()      # Get current stack frame</span>
+<span class="go">        while frame:</span>
+<span class="go">                print(&quot;[%s]&quot; % frame.f_code.co_name)</span>
+<span class="go">                print(&quot;   Locals: %s&quot; % list(frame.f_locals))</span>
+<span class="go">                frame = frame.f_back  # Go to next frame</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">foo</span><span class="p">():</span>
+<span class="go">        a = 10</span>
+<span class="go">        b = 20</span>
+<span class="go">        printstack()</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">foo</span><span class="p">()</span>
+<span class="go">[printstack]</span>
+<span class="go">   Locals: [&#39;frame&#39;]</span>
+<span class="go">[foo]</span>
+<span class="go">   Locals: [&#39;a&#39;, &#39;b&#39;]</span>
+<span class="go">[&lt;module&gt;]</span>
+<span class="go">   Locals: [&#39;__builtins__&#39;, &#39;printstack&#39;, &#39;__package__&#39;, &#39;sys&#39;, &#39;__name__&#39;, &#39;foo&#39;, &#39;__doc__&#39;]</span>
+<span class="go">&gt;&gt;&gt;</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">bar</span><span class="p">():</span>
+<span class="go">        x = 1</span>
+<span class="go">        y = 2</span>
+<span class="go">        foo()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">bar</span><span class="p">()</span>
+<span class="go">[printstack]</span>
+<span class="go">   Locals: [&#39;frame&#39;]</span>
+<span class="go">[foo]</span>
+<span class="go">   Locals: [&#39;a&#39;, &#39;b&#39;]</span>
+<span class="go">[bar]</span>
+<span class="go">   Locals: [&#39;y&#39;, &#39;x&#39;]</span>
+<span class="go">[&lt;module&gt;]</span>
+<span class="go">  Locals: [&#39;bar&#39;, &#39;__builtins__&#39;, &#39;printstack&#39;, &#39;__package__&#39;, &#39;sys&#39;, &#39;__name__&#39;, &#39;foo&#39;, &#39;__doc__&#39;]</span>
+
+<span class="go">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>For portability, you probably wouldn’t want to write too much Python
+code that relied on this.  However, sometimes programmers will get into
+various “frame hacking” tricks that make use of it.</p>
+<p>One important aspect of stack frames is that a function gets a unique
+stack frame each time it is called.  This is especially important
+for recursive functions.  For example, try this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">recursive</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+<span class="go">        if n &gt; 0:</span>
+<span class="go">             recursive(n-1)</span>
+<span class="go">        else:</span>
+<span class="go">             printstack()</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">recursive</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="go">[printstack]</span>
+<span class="go">   Locals: [&#39;frame&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[recursive]</span>
+<span class="go">   Locals: [&#39;n&#39;]</span>
+<span class="go">[&lt;module&gt;]</span>
+<span class="go">   Locals: [&#39;bar&#39;, &#39;recursive&#39;,&#39;__builtins__&#39;, &#39;printstack&#39;, &#39;__package__&#39;, &#39;sys&#39;, &#39;__name__&#39;, &#39;foo&#39;, &#39;__doc__&#39;]</span>
+<span class="go">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>In moving forward to Project 8, you’ll need to think a lot about scoping and stack frames.
+Proceed.</p>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Write a Compiler</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="ex0.html">Exercise 0  - Warmup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex1.html">Exercise 1  - Lexing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex2.html">Exercise 2  - Parsing and Abstract Syntax Trees</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex3.html">Exercise 3 - Type Checking</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex4.html">Exercise 4 - Code Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex5.html">Exercise 5 - The Mechanics of Execution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex6.html">Exercise 6 - Relations and Booleans</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex7.html">Exercise 7 - Basic Blocks and Control Flow</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Exercise 8 - Functions and Stack Frames</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Overview.html">Compiler Project Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Wabbit.html">Wabbit Language Specification</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Project0.html">Project 0 - Silly Wabbit</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project1.html">Project 1 - Lexing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project2.html">Project 2 - Parsing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project3.html">Project 3 - Types and Program Checking</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project4.html">Project 4 - Code Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project5.html">Project 5 - Code Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project5.html#a-moment-of-zen">A Moment of Zen</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project6.html">Project 6 - Booleans and Relations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project7.html">Project 7 - Control Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project8.html">Project 8 - Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Project9.html">Project 9 - The End (or just the Beginning?)</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="ex7.html" title="previous chapter">Exercise 7 - Basic Blocks and Control Flow</a></li>
+      <li>Next: <a href="Overview.html" title="next chapter">Compiler Project Overview</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, David Beazley.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.9</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
+      
+      |
+      <a href="_sources/ex8.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
