@@ -54,10 +54,8 @@ print 2 + int(3.0);
 print float(2) + 3.5;
 
 /* Testing of memory */
-var int memsize = ^0;
-var int newsize = ^(memsize + 100000);
+var memsize int = ^0;
+var newsize int = ^(memsize + 100000);
 
 `memsize = 1234;        // Assign to memory
 print `memsize + 1000;  // Prints 2234
-
-

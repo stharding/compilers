@@ -91,6 +91,7 @@ from . import typesys
 from .ast import *
 
 class WabbitParser(Parser):
+    debugfile = 'parser.out'
 
     # Same token set as defined in the lexer
     tokens = WabbitLexer.tokens
@@ -100,6 +101,9 @@ class WabbitParser(Parser):
     # precedence rules as in Python.  Instructions to be given in the project.
 
     precedence = (
+        ('left', 'PLUS', 'MINUS'),
+        ('left', 'TIMES', 'DIVIDE'),
+        ('left', 'GROW', 'DEREF'),
     )
 
     # ----------------------------------------------------------------------
@@ -131,6 +135,10 @@ class WabbitParser(Parser):
     def program(self, p):
          return Program(p.statements)
 
+    @_('')
+    def program(self, p):
+         return Program([])
+
     @_('statement')
     def statements(self, p):               # A single statement
         return [p.statement]               # The initial list
@@ -143,7 +151,7 @@ class WabbitParser(Parser):
     @_('print_statement',
        'const_declaration',
        'var_declaration',
-        # add more statements later
+       'assign_statement',
     )
     def statement(self, p):
         return p[0]
@@ -160,51 +168,54 @@ class WabbitParser(Parser):
     def var_declaration(self, p):
         return VarDeclaration(p.ID, SimpleType(p.datatype, lineno=p.lineno), None, lineno=p.lineno)
 
+    @_('location ASSIGN expression SEMI')
+    def assign_statement(self, p):
+        return Assignment(p.location, p.expression, lineno=p.lineno)
+
+    @_('ID')
+    def location(self, p):
+        return SimpleLocation(p.ID, lineno=p.lineno)
+
+    @_('DEREF expression')
+    def location(self, p):
+        return MemoryLocation(p.expression, lineno=p.lineno)
+
     @_('ID')
     def datatype(self, p):
         return SimpleType(p.ID, lineno=p.lineno)
 
     @_('PRINT expression SEMI')
     def print_statement(self, p):
-        print(t for t in p)
         return PrintStatement(p.expression, lineno=p.lineno)
 
     @_('datatype LPAREN expression RPAREN')
     def expression(self, p):
         return TypeCast(p.datatype, p.expression, lineno=p.lineno)
 
-    @_('PLUS expression')
+    @_('PLUS expression',
+       'MINUS expression',
+       'GROW expression')
     def expression(self, p):
         return UnaryOp(p[0], p.expression, lineno=p.lineno)
 
-    @_('expression PLUS expression')
-    def expression(self, p):
-        print(t for t in p)
-        return BinOp(p[1], p.expression0, p.expression1, lineno=p.lineno)
-
-    @_('MINUS expression')
-    def expression(self, p):
-        return UnaryOp(p[0], p.expression, lineno=p.lineno)
-
-    @_('expression MINUS expression')
-    def expression(self, p):
-        return BinOp(p[1], p.expression0, p.expression1, lineno=p.lineno)
-
-    @_('expression TIMES expression')
-    def expression(self, p):
-        return BinOp(p[1], p.expression0, p.expression1, lineno=p.lineno)
-
-    @_('expression DIVIDE expression')
+    @_('expression PLUS expression',
+       'expression MINUS expression',
+       'expression TIMES expression',
+       'expression DIVIDE expression')
     def expression(self, p):
         return BinOp(p[1], p.expression0, p.expression1, lineno=p.lineno)
 
     @_('LPAREN expression RPAREN')
     def expression(self, p):
-        return p
+        return p.expression
 
     @_('literal')
     def expression(self, p):
         return p.literal
+
+    @_('location')
+    def expression(self, p):
+        return p.location
 
     @_('INTEGER')
     def literal(self, p):
@@ -244,9 +255,9 @@ def parse(source):
     return ast
 
 def main():
-    '''
+    """
     Main program. Used for testing.
-    '''
+    """
     import sys
 
     if len(sys.argv) != 2:

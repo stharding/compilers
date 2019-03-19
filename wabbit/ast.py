@@ -1,5 +1,5 @@
 # ast.py
-'''
+"""
 Abstract Syntax Tree (AST) objects.
 -----------------------------------
 
@@ -11,7 +11,7 @@ top of this file.  You will need to add more on your own.
 
 This file has a small bit of metaprogramming to simplify specification
 and to perform some validation steps.  Do not modify the first part.
-'''
+"""
 
 # DO NOT MODIFY
 # -------------
@@ -84,14 +84,14 @@ class AST(object):
 
 
 class Statement(AST):
-    '''
+    """
     Base class for all statements
-    '''
+    """
 
 class Expression(AST):
-    '''
+    """
     Base class for all expressions
-    '''
+    """
 
 class Program(AST):
     value: [Statement]
@@ -100,22 +100,49 @@ class DataType(AST):
     pass
 
 class ConstDeclaration(Statement):
-    '''
+    """
     const name = value ;
-    '''
+    """
+
     name  : str
     value : Expression
 
 class VarDeclaration(Statement):
-    '''
+    """
     var name datatype [ = value ];
-    '''
+    """
+
     name     : str
     datatype : DataType
     value    : (Expression, type(None))    # Optional
 
 
+class Assignment(Statement):
+    """
+    location = expression;
+    """
+
+    location: str
+    value: Expression
+
 # Concrete AST nodes.  These are instantiated in the parser
+
+class SimpleLocation(Expression):
+    """
+    simplelocation : ID
+    """
+
+    name: str
+
+
+class MemoryLocation(Expression):
+    """
+    memorylocation : ID
+    """
+
+    name: str
+
+
 
 class SimpleType(DataType):
     name : str
@@ -171,7 +198,7 @@ class NodeVisitMeta(type):
 
 
 class NodeVisitor(metaclass=NodeVisitMeta):
-    '''
+    """
     Class for visiting nodes of the parse tree.  This is modeled after
     a similar class in the standard library ast.NodeVisitor.  For each
     node, the visit(node) method calls a method visit_NodeName(node)
@@ -191,12 +218,12 @@ class NodeVisitor(metaclass=NodeVisitMeta):
 
         tree = parse(txt)
         VisitOps().visit(tree)
-    '''
+    """
     def visit(self, node):
-        '''
+        """
         Execute a method of the form visit_NodeName(node) where
         NodeName is the name of the class of a particular node.
-        '''
+        """
         if isinstance(node, list):
             for item in node:
                 self.visit(item)
@@ -206,32 +233,32 @@ class NodeVisitor(metaclass=NodeVisitMeta):
             visitor(node)
 
     def generic_visit(self,node):
-        '''
+        """
         Method executed if no applicable visit_ method can be found.
         This examines the node to see if it has _fields, is a list,
         or can be further traversed.
-        '''
+        """
         for field in getattr(node, '_fields'):
             value = getattr(node, field, None)
             self.visit(value)
 
     @classmethod
     def __init_subclass__(cls):
-        '''
+        """
         Sanity check. Make sure that visitor classes use the right names
-        '''
+        """
         for key in vars(cls):
             if key.startswith('visit_'):
                 assert key[6:] in AST._nodes, f"{key} doesn't match any AST node"
 
 # DO NOT MODIFY
 def flatten(top):
-    '''
+    """
     Flatten the entire parse tree into a list for the purposes of
     debugging and testing.  This returns a list of tuples of the
     form (depth, node) where depth is an integer representing the
     parse tree depth and node is the associated AST node.
-    '''
+    """
     class Flattener(NodeVisitor):
         def __init__(self):
             self.depth = 0
