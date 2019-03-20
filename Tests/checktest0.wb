@@ -28,10 +28,9 @@ symbols when read in expressions and assigned.
 const pi = 3.14159;         // OK
 var x int;                  // OK
 
-print pi;                   // OK 
+print pi;                   // OK
 print x;                    // OK
 print y;                    // error. y undefined
 
 x = 45;                     // OK
 z = 13;                     // error. z undefined
- 

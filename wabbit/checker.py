@@ -40,7 +40,7 @@ The basic gist of what you need to do is as follows:
         var d int = a + b;    // Error.  int + float
         var e int = b + 4.5;  // Error.  int = float
 
-    In addition, you need to make sure that only supported 
+    In addition, you need to make sure that only supported
     operators are allowed.  For example:
 
         var a char = 'a';        // OK
@@ -78,7 +78,7 @@ The basic gist of what you need to do is as follows:
     The argument to both ^ and ` must be an integer.  The ^ operator
     takes an integer increment and returns an integer result.
 
-    The ` operator always takes an integer argument which is the 
+    The ` operator always takes an integer argument which is the
     memory address.  So, for type-checking, you need to verify that.
     The challenge concerns the result type of the ` operator.  ` is
     polymorphic--meaning that it can return any type.  However, the
@@ -86,13 +86,13 @@ The basic gist of what you need to do is as follows:
     the type can't be determined, it should default to char.
     Here are some examples:
 
-      var x int = `1234;     // Type of (`) is int.  Reads an int. 
+      var x int = `1234;     // Type of (`) is int.  Reads an int.
       var y float = `1234;   // Type of (`) is float.  Reads a float.
 
       `1234 = 42;            // Store an int at 1234.
       `1234 = 4.2;           // Store a float at 1234.
       `1234 = 'x';           // Store a byte 'x' at 1234.
-  
+
       print `1234;           // Ok. Defaults to char.
       print `1234 + 0;       // Ok. Reads an int from 1234 (0 is an int)
       print `1234 + 0.0;     // Ok. Reads a float from 1234.
@@ -139,7 +139,7 @@ generated.  Use your own experiences as a programmer as a guide (think
 about what would cause an error in your favorite programming
 language).
 
-One challenge is going to be the management of many fiddly details. 
+One challenge is going to be the management of many fiddly details.
 You've got to track symbols, types, and different sorts of capabilities.
 It's not always clear how to best organize all of that.  So, expect to
 fumble around a bit at first.
@@ -164,40 +164,148 @@ class CheckProgramVisitor(NodeVisitor):
         # Initialize the symbol table
         self.symbols = { }
 
+    # For a declaration, you'll need to check that it isn't already defined.
+    # You'll put the declaration into the symbol table so that it can be looked up later
     def visit_ConstDeclaration(self, node):
-        # For a declaration, you'll need to check that it isn't already defined.
-        # You'll put the declaration into the symbol table so that it can be looked up later
-        pass
+        self.visit(node.value)
+        if node.name in self.symbols:
+            print(
+                f"Error: Line {node.lineno}, '{node.name}' "
+                f"previousely defined here: Line {self.symbols[node.name].lineno}"
+            )
+        self.symbols[node.name] = node
+        node.datatype = node.type = node.value.type
+        node.constant = True
 
+    def visit_VarDeclaration(self, node):
+        if node.value:
+            self.visit(node.value)
+        if node.name in self.symbols:
+            print(
+                f"Error: Line {node.lineno}, '{node.name}' "
+                f"previousely defined here: Line {self.symbols[node.name].lineno}"
+            )
+
+        if not lookup_type(node.datatype):
+            print(f"Error: Line {node.lineno}, unknown type {node.datatype}.")
+        elif node.value and node.value.type == 'memloc':
+            pass
+        elif node.value and node.datatype != node.value.type:
+            print(f"Error: Line {node.lineno}, type mismatch in var "
+                  f"declaration: declared type '{node.datatype}' "
+                  f"initialized with value of type '{node.value.type}'.")
+        self.symbols[node.name] = node
+        node.constant = False
+        node.type = node.datatype
+
+    # A location represents a place where you can read/write a value.
+    # You'll need to consult the symbol table to find out information about it
     def visit_SimpleLocation(self, node):
-        # A location represents a place where you can read/write a value.
-        # You'll need to consult the symbol table to find out information about it
-        pass
+        if node.name in self.symbols:
+            node.type = self.symbols[node.name].datatype
+        else:
+            print(f"Error: Line {node.lineno}, Name error. '{node.name}' not declared")
+            node.type = None
 
+        if node.name in self.symbols:
+            node.constant = getattr(self.symbols[node.name], 'constant', False)
+        else:
+            print(f'Error: Line {node.lineno}, undeclared variable {node.name}.')
+
+    # For literals, you'll need to assign a type to the node and allow it to
+    # propagate.  This type will work it's way through various operators
     def visit_IntegerLiteral(self, node):
-        # For literals, you'll need to assign a type to the node and allow it to
-        # propagate.  This type will work it's way through various operators
         node.type = lookup_type("int")
 
-    def visit_BinOp(self, node):
-        # For operators, you need to visit each operand separately.  You'll
-        # then need to make sure the types and operator are all compatible.
+    def visit_FloatLiteral(self, node):
+        node.type = lookup_type("float")
 
+    def visit_CharLiteral(self, node):
+        node.type = lookup_type("char")
+
+    # For operators, you need to visit each operand separately.  You'll
+    # then need to make sure the types and operator are all compatible.
+    def visit_BinOp(self, node):
         self.visit(node.left)
         self.visit(node.right)
 
         # Perform various checks here
-        ...
+        binop_type = check_binary_op(
+            node.op, node.left.type, node.right.type
+        )
+        if node.left.type == 'memloc' and node.right.type != 'memloc':
+            binop_type = node.right.type
+        elif node.left.type == 'memloc' and node.right.type != 'memloc':
+            binop_type = node.left.type
+
+        if not binop_type:
+            if (hasattr(node.left, 'error') or
+                hasattr(node.right, 'error')
+            ):
+                node.type = None
+                node.error = True
+                return
+
+            print(f'Error: Line {node.lineno}. '
+                  f'Invalid types: {node.left.type}, {node.right.type} '
+                  f"for operator: '{node.op}' in expression.")
+            node.error = True
+        node.type = binop_type
+
+    def visit_UnaryOp(self, node):
+        self.visit(node.value)
+
+        unary_type = check_unary_op(node.op, node.value.type)
+        if not unary_type:
+            print(f'Error: Line {node.lineno}, invalid unary operation '
+                  f"'{node.op}' for type '{node.value.type}' "
+                  f"in expression {node.op}{node.value.value}")
+            node.error = True
+        node.type = unary_type
 
     def visit_SimpleType(self, node):
         # Associate a type name such as "int" with a Type object
-        pass
+        node.type = node.name
+
+    def visit_Assignment(self, node):
+        self.visit(node.value)
+        self.visit(node.location)
+        if hasattr(node, 'name'):
+            if self.symbols[node.name].constant:
+                print(f"Error: Line: {node.lineno}, '{node.location}' is a constant.")
+
+        if node.value.type == 'memloc':
+            pass
+        elif node.location.type == 'memloc':
+            pass
+        elif node.location.type != node.value.type:
+            print(
+                f"Error: Line {node.lineno}, type mismatch in assignment for "
+                f"variable of type {node.location.type} for value of type {node.value.type}."
+            )
+        node.type = None
+
+    def visit_PrintStatement(self, node):
+        node.type = 'void'
+        self.visit(node.value)
+
+    def visit_TypeCast(self, node):
+        self.visit(node.value)
+        node.type = node.name
+
+    def visit_MemoryLocation(self, node):
+        self.visit(node.value)
+        node.type = 'memloc'
+
+    def visit_GrowMemory(self, node):
+        self.visit(node.value)
+        node.type = 'int'
 
     # You'll need to add more visit_* methods here
 
 
 # ----------------------------------------------------------------------
-#                       DO NOT MODIFY ANYTHING BELOW       
+#                       DO NOT MODIFY ANYTHING BELOW
 # ----------------------------------------------------------------------
 
 def check_program(ast):
@@ -206,6 +314,8 @@ def check_program(ast):
     '''
     checker = CheckProgramVisitor()
     checker.visit(ast)
+    global x
+    x = checker
 
 def main():
     '''
@@ -227,6 +337,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-

@@ -91,7 +91,7 @@ from . import typesys
 from .ast import *
 
 class WabbitParser(Parser):
-    debugfile = 'parser.out'
+    # debugfile = 'parser.out'
 
     # Same token set as defined in the lexer
     tokens = WabbitLexer.tokens
@@ -103,7 +103,7 @@ class WabbitParser(Parser):
     precedence = (
         ('left', 'PLUS', 'MINUS'),
         ('left', 'TIMES', 'DIVIDE'),
-        ('left', 'GROW', 'DEREF'),
+        ('right', 'GROW', 'DEREF'),
     )
 
     # ----------------------------------------------------------------------
@@ -162,11 +162,11 @@ class WabbitParser(Parser):
 
     @_('VAR ID datatype ASSIGN expression SEMI')
     def var_declaration(self, p):
-        return VarDeclaration(p.ID, p.datatype, p.expression, lineno=p.lineno)
+        return VarDeclaration(p.ID, p.datatype.name, p.expression, lineno=p.lineno)
 
     @_('VAR ID datatype SEMI')
     def var_declaration(self, p):
-        return VarDeclaration(p.ID, SimpleType(p.datatype, lineno=p.lineno), None, lineno=p.lineno)
+        return VarDeclaration(p.ID, p.datatype.name, None, lineno=p.lineno)
 
     @_('location ASSIGN expression SEMI')
     def assign_statement(self, p):
@@ -190,13 +190,16 @@ class WabbitParser(Parser):
 
     @_('datatype LPAREN expression RPAREN')
     def expression(self, p):
-        return TypeCast(p.datatype, p.expression, lineno=p.lineno)
+        return TypeCast(p.datatype.name, p.expression, lineno=p.lineno)
 
     @_('PLUS expression',
-       'MINUS expression',
-       'GROW expression')
+       'MINUS expression')
     def expression(self, p):
         return UnaryOp(p[0], p.expression, lineno=p.lineno)
+
+    @_('GROW expression')
+    def expression(self, p):
+        return GrowMemory(p.expression, lineno=p.lineno)
 
     @_('expression PLUS expression',
        'expression MINUS expression',
@@ -250,7 +253,6 @@ def parse(source):
     '''
     lexer = WabbitLexer()
     parser = WabbitParser()
-    # print(list(lexer.tokenize(source)))
     ast = parser.parse(lexer.tokenize(source))
     return ast
 

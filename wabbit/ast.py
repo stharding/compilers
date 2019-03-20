@@ -93,10 +93,14 @@ class Expression(AST):
     Base class for all expressions
     """
 
+# Concrete AST nodes.  These are instantiated in the parser
 class Program(AST):
     value: [Statement]
 
 class DataType(AST):
+    pass
+
+class Location(AST):
     pass
 
 class ConstDeclaration(Statement):
@@ -122,12 +126,11 @@ class Assignment(Statement):
     location = expression;
     """
 
-    location: str
+    location: Location
     value: Expression
 
-# Concrete AST nodes.  These are instantiated in the parser
 
-class SimpleLocation(Expression):
+class SimpleLocation(Location):
     """
     simplelocation : ID
     """
@@ -135,14 +138,19 @@ class SimpleLocation(Expression):
     name: str
 
 
-class MemoryLocation(Expression):
+class MemoryLocation(Location):
     """
-    memorylocation : ID
+    dereference memory: `expr
     """
 
-    name: str
+    value: Expression
 
+class GrowMemory(Expression):
+    """
+    grow memory: ^expr
+    """
 
+    value: Expression
 
 class SimpleType(DataType):
     name : str
@@ -154,7 +162,7 @@ class TypeCast(DataType):
 
 class UnaryOp(Expression):
     op: str
-    operand: Expression
+    value: Expression
 
 class BinOp(Expression):
     op: str

@@ -12,10 +12,11 @@ minimal basic requirements:
 3. Types support different operators (e.g., +, -, *, /, etc.)
 
 One way to achieve all of these goals is to start off with
-some kind of table-driven approach.  It's not the most 
+some kind of table-driven approach.  It's not the most
 sophisticated thing, but it will work as a starting point.
 You can come back and refactor the type system later.
 '''
+
 # Set of valid typenames
 typenames = { 'int', 'float', 'char' }
 
@@ -24,8 +25,14 @@ _binary_ops = {
     # Integer operations
     ('+', 'int', 'int') : 'int',
     ('-', 'int', 'int') : 'int',
+    ('*', 'int', 'int') : 'int',
+    ('/', 'int', 'int') : 'int',
 
     # Float operations
+    ('+', 'float', 'float') : 'float',
+    ('-', 'float', 'float') : 'float',
+    ('*', 'float', 'float') : 'float',
+    ('/', 'float', 'float') : 'float',
 
     # Character operations
 }
@@ -33,8 +40,13 @@ _binary_ops = {
 _unary_ops = {
     # Integer operations
     ('+', 'int') : 'int',
+    ('-', 'int') : 'int',
+    ('`', 'int') : 'int',
+    ('^', 'int') : 'int',
 
     # Float operations
+    ('+', 'float') : 'float',
+    ('-', 'float') : 'float',
 }
 
 def lookup_type(name):
@@ -55,15 +67,3 @@ def check_unary_op(op, expr):
     # Check if a unary operation is allowed or not. Returns the result
     # type or None if not supported.
     return _unary_ops.get((op, expr))
-
-    
-
-
-
-
-
-          
-
-
-
-

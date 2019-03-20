@@ -22,8 +22,8 @@ There should be no errors reported in this file.
 
 /* These should all check correctly. Verify that proper types are attached */
 
-print 2 + 3;      
-print 2 - 3;       
+print 2 + 3;
+print 2 - 3;
 print 2 * 3;
 print 2 / 3;
 print +2;
@@ -37,5 +37,3 @@ print +2.0;
 print -2.0;
 
 print 'h';
-
-
