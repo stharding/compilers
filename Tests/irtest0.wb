@@ -10,6 +10,6 @@ print 'a';
 ('PRINTI',)
 ('CONSTF', 3.5)
 ('PRINTF',)
-('CONSTB', 97)
+('CONSTI', 97)
 ('PRINTB',)
 */

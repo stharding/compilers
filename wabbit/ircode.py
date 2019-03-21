@@ -3,7 +3,7 @@
 Project 4
 =========
 In this project, you are going to turn the AST into a simple intermediate
-machine code based on a stack architecture.  Make sure you read the 
+machine code based on a stack architecture.  Make sure you read the
 machine description before beginning.  One nice thing about this project
 is that you're now on the "happy path."  If your type checker works, then
 the program is known to be "corect."  You don't really need to do any
@@ -58,7 +58,7 @@ With that in mind, here is a basic instruction set for our IR Code:
 
     ; Integer operations
     CONSTI  value            ; Push a integer literal
-    VARI name                ; Declare an integer variable 
+    VARI name                ; Declare an integer variable
     ADDI                     ; Add top two items on stack
     SUBI                     ; Substract top two items on stack
     MULI                     ; Multiply top two items on stack
@@ -70,17 +70,17 @@ With that in mind, here is a basic instruction set for our IR Code:
 
     ; Floating point operations
     CONSTF value             ; Push a float literal
-    VARF name                ; Declare an float variable 
+    VARF name                ; Declare an float variable
     ADDF                     ; Add top two items on stack
     SUBF                     ; Substract top two items on stack
     MULF                     ; Multiply top two items on stack
     DIVF                     ; Divide top two items on stack
     PRINTF                   ; Print top item on stack
     PEEKF                    ; Get float from memory (address on stack)
-    POKEF                    ; Put float in memory (address, value on stack) 
+    POKEF                    ; Put float in memory (address, value on stack)
     FTOI                     ; Convert float to integer
 
-    ; Byte-oriented operations (values are presented as integers)    
+    ; Byte-oriented operations (values are presented as integers)
     PRINTB                   ; Print top item on stack
     PEEKB                    ; Get byte from memory (address on stack)
     POKEB                    ; Put byte in memory (address, value on stack)
@@ -105,8 +105,8 @@ attention to that.
 Your Task
 =========
 Your task is as follows: Write a AST Visitor() class that takes a
-program and flattens it to a sequence instructions represented as 
-tuples of the form 
+program and flattens it to a sequence instructions represented as
+tuples of the form
 
        (operation, operands, ...)
 
@@ -149,6 +149,12 @@ class GenerateCode(ast.NodeVisitor):
     def visit_IntegerLiteral(self, node):
         self.code.append(('CONSTI', node.value))
 
+    def visit_FloatLiteral(self, node):
+        self.code.append(('CONSTF', node.value))
+
+    def visit_CharLiteral(self, node):
+        self.code.append(('CONSTI', ord(node.value)))
+
     def visit_BinOp(self, node):
         self.visit(node.left)
         self.visit(node.right)
@@ -177,6 +183,21 @@ class GenerateCode(ast.NodeVisitor):
                 raise RuntimeError(f'Unknown binop {op}')
         self.code.append((code,))
 
+    def visit_UnaryOp(self, node):
+
+        if node.op == '-':
+            if node.value.type == 'int':
+                self.code.append(('CONSTI', 0))
+            else:
+                self.code.append(('CONSTF', 0.0))
+
+            self.visit(node.value)
+            if node.value.type == 'int':
+                self.code.append(('SUBI',))
+            else:
+                self.code.append(('SUBF',))
+        else:
+            self.visit(node.value)
     # CHALLENGE:  Figure out some more sane way to refactor the code for
     # binary and unary operators to be less complicated
 
@@ -190,6 +211,52 @@ class GenerateCode(ast.NodeVisitor):
             code = 'PRINTB'
         inst = (code,)
         self.code.append(inst)
+
+    def visit_Assignment(self, node):
+        self.visit(node.value)
+        self.visit(node.location)
+
+    def make_declaration(self, node):
+        if node.type == 'float':
+            self.code.append(('VARF', node.name))
+        else:
+            self.code.append(('VARI', node.name))
+
+        if node.value:
+            self.visit(node.value)
+            self.code.append(('STORE', node.name))
+
+    visit_VarDeclaration = visit_ConstDeclaration = make_declaration
+
+    def visit_SimpleLocation(self, node):
+        if node.usage == 'load':
+            self.code.append(('LOAD', node.name))
+        else:
+            self.code.append(('STORE', node.name))
+
+    def visit_GrowMemory(self, node):
+        self.visit(node.value)
+        self.code.append(('GROW',))
+
+    def visit_MemoryLocation(self, node):
+        if node.type == 'int':
+            inst = ('POKEI',)
+        elif node.type == 'float':
+            inst = ('POKEF',)
+        elif node.type == 'char':
+            inst = ('POKEB',)
+        else:
+            self.visit(node.value)
+            inst = ('PEEK',)
+        self.code.append(inst)
+
+    def visit_TypeCast(self, node):
+        self.visit(node.value)
+        if node.type == 'float' and node.value.type != 'float':
+            self.code.append(('ITOF',))
+
+        if node.type != 'float' and node.value.type == 'float':
+            self.code.append(('FTOI',))
 
 # ----------------------------------------------------------------------
 #                          TESTING/MAIN PROGRAM

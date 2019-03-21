@@ -176,6 +176,7 @@ class CheckProgramVisitor(NodeVisitor):
         self.symbols[node.name] = node
         node.datatype = node.type = node.value.type
         node.constant = True
+        node.value.constant = True
 
     def visit_VarDeclaration(self, node):
         if node.value:
@@ -196,6 +197,8 @@ class CheckProgramVisitor(NodeVisitor):
                   f"initialized with value of type '{node.value.type}'.")
         self.symbols[node.name] = node
         node.constant = False
+        if node.value:
+            node.value.constant = False
         node.type = node.datatype
 
     # A location represents a place where you can read/write a value.
@@ -211,6 +214,11 @@ class CheckProgramVisitor(NodeVisitor):
             node.constant = getattr(self.symbols[node.name], 'constant', False)
         else:
             print(f'Error: Line {node.lineno}, undeclared variable {node.name}.')
+
+    def visit_LoadValue(self, node):
+        self.visit(node.location)
+        node.type = node.location.type
+        node.location.usage = 'load'
 
     # For literals, you'll need to assign a type to the node and allow it to
     # propagate.  This type will work it's way through various operators
@@ -270,6 +278,8 @@ class CheckProgramVisitor(NodeVisitor):
     def visit_Assignment(self, node):
         self.visit(node.value)
         self.visit(node.location)
+        node.location.usage = 'store'
+
         if hasattr(node, 'name'):
             if self.symbols[node.name].constant:
                 print(f"Error: Line: {node.lineno}, '{node.location}' is a constant.")
@@ -314,8 +324,6 @@ def check_program(ast):
     '''
     checker = CheckProgramVisitor()
     checker.visit(ast)
-    global x
-    x = checker
 
 def main():
     '''

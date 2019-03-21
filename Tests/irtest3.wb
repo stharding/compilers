@@ -30,6 +30,6 @@ Note: Constants are declared as ordinary variables.  You don't worry
 about immutability at this stage because that was already validated in
 the type checker.
 
-To make this part of the project work, you'll need to pay careful 
+To make this part of the project work, you'll need to pay careful
 attention to location nodes and reading of locations in expressions.
 */

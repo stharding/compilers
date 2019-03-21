@@ -218,7 +218,7 @@ class WabbitParser(Parser):
 
     @_('location')
     def expression(self, p):
-        return p.location
+        return LoadValue(p.location)
 
     @_('INTEGER')
     def literal(self, p):
@@ -230,7 +230,7 @@ class WabbitParser(Parser):
 
     @_('CHAR')
     def literal(self, p):
-        return CharLiteral(p.CHAR, lineno=p.lineno)
+        return CharLiteral(eval(p.CHAR), lineno=p.lineno)
 
     # ----------------------------------------------------------------------
     # DO NOT MODIFY

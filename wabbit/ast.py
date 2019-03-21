@@ -137,6 +137,9 @@ class SimpleLocation(Location):
 
     name: str
 
+class LoadValue(Location):
+    location: Location
+
 
 class MemoryLocation(Location):
     """
